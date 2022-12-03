@@ -1,0 +1,350 @@
+﻿var SettingPanel = {}
+
+<setting class="panel" style="{ visible }">
+    <backdrop class="backdrop" onclick="{ hide }">
+        <panel class="left-panel">
+            <header class="header-bar">
+                <div class="pull-left text">設定</div>
+            </header>
+            <content class="content">
+                <div class="input-list">
+                    <div>ストリーミング</div>
+                    <div>
+                        <div class="select-item" onclick="{ setStreamType }">
+                            <span>方式</span>
+                            <span class="pull-right">{ streamType }</span>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="select-item" onclick="{ setVideoMode }">
+                            <span>画質</span>
+                            <span class="pull-right">{ videoMode }</span>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="select-item" onclick="{ setHlsReady }">
+                            <span>HLS開始待ち時間</span>
+                            <span class="pull-right">{ hlsReady }</span>
+                        </div>
+                    </div>
+                    <div>録画一覧</div>
+                    <div>
+                        <div class="chk" onclick="{ changeRecordView }">
+                            <span>削除済み録画は表示しない</span>
+                            <span class="pull-right">
+                                <i class="material-icons">{ recordView == 1 ? "&#xE834;" : "&#xE835;" }</i>
+                            </span>
+                        </div>
+                    </div>
+                    <div>
+                        <button class="btn" onclick="{ updateRecordStatus }">ファイルチェック実行</button>
+                    </div>
+                    <div>ユーザ番組表編集</div>
+                    <div>
+                        <button class="btn" onclick="{ editUserEpg }" data-id="1">ユーザ1</button>
+                    </div>
+                    <div>
+                        <button class="btn" onclick="{ editUserEpg }" data-id="2">ユーザ2</button>
+                    </div>
+                    <div>
+                        <button class="btn" onclick="{ editUserEpg }" data-id="3">ユーザ3</button>
+                    </div>
+                    <div>番組表の1時間の高さ</div>
+                    <div>
+                        <input type="number" pattern="\d*" onblur="{ editEpgHourHeight }" ref="epg-hour-hight" class="padded-list" value="{ epgHourHeight }">
+                    </div>
+                    <div>番組表更新</div>
+                    <div>
+                        <button class="btn" onclick="{ updateEpg }">開始</button>
+                    </div>
+                    <div>
+                        <button class="btn" onclick="{ cancelUpdateEpg }">中止</button>
+                    </div>
+                    <div>メンテナンス</div>
+                    <div>
+                        <button class="btn" onclick="{ clearLog }">ログをクリア</button>
+                    </div>
+                    <div>
+                        <button class="btn" onclick="{ clearRecord }">録画一覧をクリア</button>
+                    </div>
+                    <div>
+                        <button class="btn" onclick="{ addTsFileInfo }">TSファイルを登録</button>
+                    </div>
+                </div>
+            </content>
+        </panel>
+    </backdrop>
+
+    <text-menu ref="selecter"></text-menu>
+    <text-menu ref="hlsreadyselect"></text-menu>
+
+    <script>
+        "use strict"
+
+        var self = this
+        var callback
+
+        var services = null
+
+        this.on("mount", function (id)
+        {
+            initServiceList()
+        })
+
+        SettingPanel.show = function (_callback)
+        {
+            callback = _callback
+
+            self.epgHourHeight = localStorage.getItem("epg-hour-hight")
+            self.videoMode = localStorage.getItem("video-mode")
+            self.recordView = localStorage.getItem("record/view")
+            self.streamType = localStorage.getItem("stream-type")
+            self.hlsReady = localStorage.getItem("hls-ready")
+
+            self.visible = "display: block;"
+            self.update()
+        }
+
+        hide(e)
+        {
+            if (e.target == e.currentTarget)
+            {
+                self.visible = ""
+
+                if (callback != null)
+                {
+                    callback()
+                    callback = null
+                }
+            }
+        }
+
+        changeRecordView()
+        {
+            self.recordView = self.recordView == 1 ? 0 : 1
+            localStorage.setItem("record/view", self.recordView)
+        }
+
+        updateRecordStatus()
+        {
+            Webapi.exec("UpdateRecordStatus", {}, function (ret)
+            {
+                if (ret.code == 0)
+                    Dialog.alert("録画ファイルのチェックが完了しました。")
+                else
+                    Dialog.alert("録画ファイルのチェックに失敗しました。理由 : " + ret.message)
+            })
+        }
+
+        setVideoMode(e)
+        {
+            var list =
+                [
+                    { text: "low" },
+                    { text: "middle" },
+                    { text: "high" }
+                ]
+
+            self.refs.selecter.show(list, function (item)
+            {
+                self.videoMode = item.text
+                localStorage.setItem("video-mode", self.videoMode)
+                self.update()
+            })
+        }
+
+        setStreamType(e)
+        {
+            var list =
+                [
+                    { text: "pd" },
+                    { text: "hls" },
+                    { text: "hls emu" }
+                ]
+
+            self.refs.selecter.show(list, function (item)
+            {
+                if (item.text == "hls emu" && Hls.isSupported() == false)
+                    Dialog.alert("このブラウザでは、HLS エミュレーションを使用できません。")
+                else
+                {
+                    self.streamType = item.text
+                    localStorage.setItem("stream-type", self.streamType)
+                    self.update()
+                }
+            })
+        }
+
+        cancelUpdateEpg()
+        {
+            Webapi.exec("CancelUpdateEpg", {}, function (ret)
+            {
+                if (ret.code == 0)
+                    Dialog.alert("番組表更新を中止しました。")
+                else
+                    Dialog.alert("番組表更新の中止に失敗しました。理由 : " + ret.message)
+            })
+        }
+
+        updateEpg()
+        {
+            Webapi.exec("UpdateEpg", {}, function (ret)
+            {
+                if (ret.code == 0)
+                    Dialog.alert("番組表更新を開始しました。")
+                else
+                    Dialog.alert("番組表更新の開始に失敗しました。理由 : " + ret.message)
+            })
+        }
+
+        clearRecord()
+        {
+            Dialog.confirm('録画一覧をクリアしますか？', function ()
+            {
+                var keys = [];
+
+                for (var i = 0; i < localStorage.length; ++i)
+                    keys.push(localStorage.key(i));
+
+                keys.forEach(function (key)
+                {
+                    if (key.indexOf('record-play/') != -1)
+                        localStorage.removeItem(key)
+                })
+
+                Webapi.exec("ClearRecord", {}, function (ret)
+                {
+                    if (ret.code == 0)
+                        Dialog.alert("録画一覧をクリアしました。再読み込みしてください。")
+                    else
+                        Dialog.alert("録画一覧のクリアに失敗しました。理由 : " + ret.message)
+                })
+            })
+        }
+
+        clearLog()
+        {
+            Dialog.confirm('ログをクリアしますか？', function ()
+            {
+                Webapi.exec("ClearLog", {}, function (ret)
+                {
+                    if (ret.code == 0)
+                        Dialog.alert("ログをクリアしました。再読み込みしてください。")
+                    else
+                        Dialog.alert("ログのクリアに失敗しました。理由 : " + ret.message)
+                })
+            })
+        }
+
+        addTsFileInfo()
+        {
+            Dialog.confirm('録画フォルダのTSファイルを、録画一覧に登録します。実行していいですか？ (ファイル数によっては時間がかかります)', function ()
+            {
+                Webapi.exec("AddTsFileInfo", {}, function (ret)
+                {
+                    if (ret.code == 0)
+                        Dialog.alert("TSファイル登録を開始しました。詳細はログを参照してください。")
+                    else
+                        Dialog.alert("TSファイル登録を開始できません。詳細: " + ret.message)
+                })
+            })
+        }
+
+        editEpgHourHeight(e)
+        {
+            var height = Number(self.refs["epg-hour-hight"].value)
+
+            if (height >= 100 && height <= 1000)
+                localStorage.setItem("epg-hour-hight", height)
+            else
+                Dialog.alert("番組表の高さは、100～1000の数値を指定してください。");
+        }
+
+        setHlsReady(e)
+        {
+            var list =
+                [
+                    { text: "1" },
+                    { text: "2" },
+                    { text: "3" }
+                ]
+
+            self.refs.selecter.show(list, function (item)
+            {
+                self.hlsReady = item.text
+                localStorage.setItem("hls-ready", self.hlsReady)
+                self.update()
+            })
+        }
+
+        editUserEpg(e)
+        {
+            var id = e.target.dataset.id
+            var sql = "select fsid from user_epg where id = " + id
+
+            Webapi.getTable(sql, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("ユーザ番組表の取得に失敗しました。理由 : " + ret.message)
+                    return
+                }
+
+                var users = ret.data1
+
+                services.forEach(function (service)
+                {
+                    service.checked = users.some(function (user)
+                    {
+                        if (service[0] == user[0])
+                            return true
+                    })
+                })
+
+                Dialog.checklist(services, function ()
+                {
+                    var list = services.filter(function (service)
+                    {
+                        return service.checked
+
+                    }).map(function (service)
+                    {
+                        return service.fsid
+                    })
+
+                    Webapi.exec("SetUserEpg", { id: id, fsid: list.join() }, function (ret)
+                    {
+                        if (ret.code != 0)
+                        {
+                            Dialog.alert("ユーザ番組表の設定に失敗しました。理由 : " + ret.message)
+                            return
+                        }
+                    })
+                })
+            })
+        }
+
+        function initServiceList()
+        {
+            var sql = "select fsid, name from service group by fsid order by id"
+
+            Webapi.getTable(sql, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("サービスの取得に失敗しました。理由 : " + ret.message)
+                    return;
+                }
+
+                services = ret.data1
+
+                services.forEach(function (service)
+                {
+                    service.checked = false
+                    service.fsid = service[0]
+                    service.text = service[1]
+                })
+            })
+        }
+    </script>
+</setting>

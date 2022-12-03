@@ -1,0 +1,447 @@
+var EpgPage = {}
+
+<epg show="{ visible }">
+    <header class="header-bar">
+        <button class="btn pull-left" onclick="MainMenu.show()"><i class="material-icons">&#xE5D2;</i></button>
+        <button class="btn pull-left" onclick="{ changeEpg }">{ epgName }</button>
+        <button class="btn pull-left" onclick="{ jumpDay }">{ epgDay }</button>
+        <a class="btn pull-right" href="#search"><i class="material-icons">&#xE8B6;</i></a>
+        <button class="btn pull-right" onclick="{ sync }"><i class="material-icons">&#xE627;</i></button>
+    </header>
+
+    <div id='service-bar' ref="service-bar">
+        <div each="{ service in services } no-reorder" class='service'>
+            <img src='/logo/{ service[0] }.bmp' onerror="this.src ='nologo.jpg'">
+            <br>
+            { service[1] }
+        </div>
+    </div>
+
+    <div id='time-bar' ref='time-bar'>
+        <div each="{ time in times } no-reorder" class='time-label' style="{ 'height:' + hourHeight + 'px;' }">{ time }</div>
+    </div>
+
+    <content class="main-content" ref="content" onscroll="{ onscroll }">
+        <div id='epg' style="{ 'height:' + epgScrollHeight + 'px' }">
+            <div each="{ service in services } no-reorder" class='service-box'>
+                <div each="{ event in service.events } no-reorder" onclick="{ showEventPanel }" class='event { event.genre }' style="{ 'top:' + event.top + 'px; height:' + event.height + 'px;' }">
+                    <div>{ event.time } <span if="{ event.reserveStatus != '' }" class='reserve-label { event.reserveStatus }'>{ event.tuner }</span>{ event[4] }</div>
+                </div>
+            </div>
+        </div>
+        <hr id="now-bar" ref="now-bar">
+    </content>
+
+    <pagetab></pagetab>
+
+    <text-menu ref="epgselect"></text-menu>
+    <text-menu ref="jumpmenu"></text-menu>
+    <event-panel></event-panel>
+
+    <style>
+        #time-bar
+        {
+            left: 0;
+            margin-top: 90px;
+            overflow: hidden;
+            position: fixed;
+            width: 30px;
+            min-width: 30px;
+        }
+
+        .time-label
+        {
+            position: relative;
+            overflow: hidden;
+            color: white;
+            text-align: center;
+            font-size: 12px;
+            border-bottom: lightgray 1px solid;
+            padding-top: 5px;
+        }
+
+        #service-bar
+        {
+            display: -webkit-flex;
+            display: flex;
+            position: absolute;
+            left: 0;
+            top: 40px;
+            z-index: 20;
+            overflow: hidden;
+            padding-left: 30px;
+        }
+
+        .service
+        {
+            position: relative;
+            overflow: hidden;
+            width: 120px;
+            min-width: 120px;
+            height: 50px;
+            padding: 5px;
+            color: white;
+            text-align: center;
+            font-size: 12px;
+        }
+
+            .service img
+            {
+                width: 32px;
+                height: 18px;
+            }
+
+        .main-content
+        {
+            margin-left: 30px;
+            margin-top: 90px;
+        }
+
+        #epg
+        {
+            display: -webkit-flex;
+            display: flex;
+            position: relative;
+        }
+
+        .service-box
+        {
+            position: relative;
+            overflow: hidden;
+            border-right: lightgray 1px solid;
+            width: 120px;
+            min-width: 120px;
+            background-color: #eee;
+        }
+
+        .event
+        {
+            padding: 5px;
+            width: 100%;
+            overflow: hidden;
+            border-top: lightgray 1px solid;
+            border-bottom: lightgray 1px solid;
+            position: absolute;
+            line-height: 1.3;
+            white-space: normal;
+            cursor: default;
+        }
+
+            .event .reserve-label
+            {
+                display: none;
+            }
+
+                .event .reserve-label.enable
+                {
+                    display: inline;
+                    background-color: tomato;
+                    color: white;
+                }
+
+                .event .reserve-label.overlay
+                {
+                    display: inline;
+                    background-color: yellow;
+                }
+
+                .event .reserve-label.disable
+                {
+                    display: inline;
+                    background-color: gray;
+                    color: white;
+                }
+
+            .event:active
+            {
+                background-color: #eee !important;
+            }
+
+        #now-bar
+        {
+            position: absolute;
+            z-index: 1;
+            border-color: red;
+            border-style: solid;
+            border-width: 2px 0px 0px 0px;
+            margin: 0px;
+        }
+    </style>
+
+    <script>
+        "use strict"
+
+        var self = this
+        var router = route.create()
+
+        var hourHeight = 200        //1hの高さ
+        var startDate   //EPGの開始日時
+        var contentTop = 0
+        var content
+
+        EpgPage = {
+            update: function ()
+            {
+                if (startDate != null)
+                    updateEvent(true)
+            }
+        }
+
+        this.on("mount", function ()
+        {
+            content = self.refs["content"]
+
+            self.epgName = localStorage.getItem("epg/name")
+
+            if (self.epgName == null)
+                self.epgName = "地上"
+        })
+
+        router('epg', function ()
+        {
+            self.visible = true
+
+            if (startDate == null)
+                load()
+            else
+                self.update()
+        })
+
+        router('..', function ()
+        {
+            self.visible = false
+            self.update()
+        })
+
+        search()
+        {
+            location.href = "#search"
+        }
+
+        sync()
+        {
+            load()
+        }
+
+        changeDay(e)
+        {
+            epgDay = e.item.day.index
+            load()
+        }
+        
+        jumpDay(e)
+        {
+            var list = []
+
+            for (var i = 1; i < 9; i++)
+            {
+                var date = startDate.clone().addHours(24 * i + 4)
+                list.push(
+                    {
+                        text: date.toString("M月d日") + " ({0})".format(Util.getWeekText(date.getDay())),
+                        pos: (24 * i + 4) * hourHeight
+                    })
+            }
+
+            self.refs.jumpmenu.show(list, function (item)
+            {
+                content.scrollTop = item.pos
+            })
+        }
+
+        changeEpg(e)
+        {
+            var list =
+            [
+                { text: "ユーザ1" },
+                { text: "ユーザ2" },
+                { text: "ユーザ3" },
+                { text: "地上" },
+                { text: "BS" },
+                { text: "CS" }
+            ]
+
+            self.refs.epgselect.show(list, function (item)
+            {
+                self.epgName = item.text
+                load()
+
+                localStorage.setItem("epg/name", self.epgName)
+            })
+        }
+
+        function load()
+        {
+            var height = localStorage.getItem("epg-hour-hight")
+            hourHeight = height == null || height == "undefined" ? hourHeight : Number(height)
+            self.epgScrollHeight = hourHeight * 24 * 9
+
+            self.hourHeight = hourHeight
+
+            startDate = XDate.today().addDays(-1)
+
+            setInterval(setNowBar, 60 * 1000)
+            loadService()
+            setTimeBar()
+        }
+
+        function setTimeBar()
+        {
+            self.times = []
+
+            for (var i = 0; i < 24 * 9; i++)
+                self.times.push(i % 24)
+        }
+
+        function setNowBar()
+        {
+            var nowbar = self.refs["now-bar"]
+            var width = content.scrollWidth
+
+            nowbar.style.width = width + "px"
+
+            var now = new XDate(XDate.now())
+            var top = Math.floor((now - startDate) * hourHeight / 3600000)
+            nowbar.style.top = top + "px"
+            self.update()
+        }
+
+        showEventPanel(e)
+        {
+            var id = e.item.event[0]
+            self.tags["event-panel"].show(id)
+        }
+
+        function getEpgSql(table)
+        {
+            var sql =
+            {
+                "ユーザ1": "{0}.fsid in (select fsid from user_epg where id = 1)".format(table),
+                "ユーザ2": "{0}.fsid in (select fsid from user_epg where id = 2)".format(table),
+                "ユーザ3": "{0}.fsid in (select fsid from user_epg where id = 3)".format(table),
+                "地上": "{0}.fsid >> 32 not in (4, 6, 7)".format(table),
+                "BS": "{0}.fsid >> 32 = 4".format(table),
+                "CS": "{0}.fsid >> 32 in (6, 7)".format(table)
+            }
+
+            return sql[self.epgName]
+        }
+
+        function updateEvent(force)
+        {
+            if (force || Math.abs(contentTop - content.scrollTop) > hourHeight)
+            {
+                //表示されている時だけscrollTopを取得(0になるため)
+                if (self.visible)
+                    contentTop = content.scrollTop
+
+                var topMin = Math.floor(contentTop / (hourHeight / 60))
+                var topDay = startDate.clone().addMinutes(topMin)
+                self.epgDay = topDay.toString("M月d日") + " ({0})".format(Util.getWeekText(topDay.getDay()))
+
+                loadEvent()
+            }
+        }
+
+        //スクロールイベントを間引く
+        var onscroll2 = debounce(updateEvent, 300)
+
+        onscroll()
+        {
+            onscroll2()
+
+            var servicebar = self.refs["service-bar"]
+            var timebar = self.refs["time-bar"]
+
+            servicebar.style.left = content.scrollLeft * -1 + "px"
+            timebar.style.top = content.scrollTop * -1 + "px"
+        }
+
+        function loadService()
+        {
+            var sql = "select fsid, name from service where {0} group by fsid order by id".format(getEpgSql("service"))
+
+            Webapi.getTable(sql, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("番組の取得に失敗しました。理由 : " + ret.message)
+                    return
+                }
+
+                self.services = ret.data1
+                self.update()
+                setNowBar()
+                junpNow()
+                updateEvent(true)
+            })
+        }
+
+        function junpNow()
+        {
+            var now = new XDate(XDate.now())
+            now.addHours(-1)
+            content.scrollTop = startDate.diffHours(now) * hourHeight
+        }
+
+        function loadEvent()
+        {
+            var topMin = Math.floor(contentTop / (hourHeight / 60))
+            var heightMin = Math.floor(content.clientHeight / (hourHeight / 60))
+            var from = startDate.clone().addMinutes(topMin)
+            var to = from.clone().addMinutes(heightMin)
+            from.addHours(-2)
+            to.addHours(2)
+
+            var sql = "select event.id, event.fsid, event.start, event.duration, event.title, genre, status, tuner from event"
+                    + " left join reserve on reserve.fsid = event.fsid and reserve.eid = event.eid"
+                    + " where {0} and event.end > {1} and event.start < {2}".format(
+                getEpgSql("event"),
+                Webapi.convertDateTime(from),
+                Webapi.convertDateTime(to))
+
+            Webapi.getTable(sql, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("番組の取得に失敗しました。理由 : " + ret.message)
+                    return
+                }
+
+                var events = ret.data1
+
+                self.services.forEach(function (service)
+                {
+                    service.events = events.filter(function (event)
+                    {
+                        return service[0] == event[1]
+                    })
+                })
+
+                events.forEach(function (event)
+                {
+                    var start = Webapi.convertXDate(event[2])
+                    var duration = event[3]
+                    event.height = Math.ceil(duration * hourHeight / 3600)
+                    event.time = start.toString("H:mm")
+                    event.top = Math.floor((start - startDate) * hourHeight / 3600000)
+
+                    event.genre = Genre.getFirstClass(event[5])
+
+                    var status = event[6]
+
+                    if (status == null)
+                        event.reserveStatus = ""
+                    else if (ReserveState.isEnable(status))
+                        event.reserveStatus = ReserveState.isOverlay(status) ? "overlay" : "enable"
+                    else
+                        event.reserveStatus = "disable"
+
+                    event.tuner = event[7] == null ? "" : "[{0}]".format(event[7])
+                })
+
+                self.update()
+            })
+        }
+    </script>
+</epg>

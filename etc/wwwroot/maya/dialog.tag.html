@@ -1,0 +1,273 @@
+﻿var Dialog = {}
+
+<alert class="dialog" style="{ visible }">
+    <backdrop class="backdrop">
+        <div class="dialogbox">
+            <div class="dialog-content">{ message }</div>
+            <div class="buttons">
+                <button class="btn btn-flat" onclick="{ confirm }">OK</button>
+            </div>
+        </div>
+    </backdrop>
+
+    <style>
+        :scope.dialog .backdrop
+        {
+            z-index: 100;
+        }
+
+        .dialogbox .buttons .btn
+        {
+            width: 100%;
+        }
+    </style>
+
+    <script>
+        var self = this
+
+        Dialog.alert = function (message)
+        {
+            self.message = message
+            self.visible = "display: block;"
+            self.update()
+        }
+
+        confirm()
+        {
+            self.visible = ""
+        }
+    </script>
+</alert>
+
+<confirm class="dialog" style="{ visible }">
+    <backdrop class="backdrop">
+        <div class="dialogbox">
+            <div class="dialog-content">{ message }</div>
+            <div class="buttons">
+                <button class="btn btn-flat negative" onclick="{ cancel }">キャンセル</button>
+                <button class="btn btn-flat" onclick="{ confirm }">OK</button>
+            </div>
+        </div>
+    </backdrop>
+
+    <style>
+        :scope.dialog .backdrop
+        {
+            z-index: 100;
+        }
+
+        .dialogbox .buttons .btn
+        {
+            width: 50%;
+        }
+    </style>
+
+    <script>
+        var self = this
+        var callback
+
+        Dialog.confirm = function (message, _callback)
+        {
+            callback = _callback
+            self.message = message
+            self.visible = "display: block;"
+            self.update()
+        }
+
+        confirm()
+        {
+            self.visible = ""
+            callback()
+        }
+
+        cancel()
+        {
+            self.visible = ""
+        }
+    </script>
+</confirm>
+
+<prompt class="dialog" style="{ visible }">
+    <backdrop class="backdrop">
+        <div class="dialogbox">
+            <div class="dialog-content">
+                <div>{ message }</div>
+                <input type="text" ref="text">
+            </div>
+            <div class="buttons">
+                <button class="btn btn-flat negative" onclick="{ cancel }">キャンセル</button>
+                <button class="btn btn-flat" onclick="{ confirm }">OK</button>
+            </div>
+        </div>
+    </backdrop>
+
+    <style>
+        :scope.dialog .backdrop
+        {
+            z-index: 100;
+        }
+
+        .dialogbox .buttons .btn
+        {
+            width: 50%;
+        }
+
+        input[type="text"]
+        {
+            margin-top: 12px;
+        }
+    </style>
+
+    <script>
+        var self = this
+        var callback
+
+        Dialog.prompt = function (message, _callback)
+        {
+            callback = _callback
+            self.message = message
+            self.visible = "display: block;"
+            self.update()
+        }
+
+        confirm()
+        {
+            self.visible = ""
+            var text = self.refs["text"].value
+            callback(text)
+        }
+
+        cancel()
+        {
+            self.visible = ""
+        }
+    </script>
+</prompt>
+
+<editor class="dialog" style="{ visible }">
+    <backdrop class="backdrop">
+        <div class="dialogbox">
+            <div class="dialog-content">
+                <div>{ message }</div>
+                <textarea ref="text"></textarea>
+            </div>
+            <div class="buttons">
+                <button class="btn btn-flat negative" onclick="{ cancel }">キャンセル</button>
+                <button class="btn btn-flat" onclick="{ confirm }">OK</button>
+            </div>
+        </div>
+    </backdrop>
+
+    <style>
+        .dialogbox
+        {
+            height: 360px;
+        }
+
+            .dialogbox .buttons .btn
+            {
+                width: 50%;
+            }
+
+        textarea
+        {
+            margin-top: 12px;
+            height: 240px;
+        }
+    </style>
+
+    <script>
+        var self = this
+        var callback
+
+        Dialog.editor = function (message, _callback)
+        {
+            self.refs["text"].value = ""
+            callback = _callback
+            self.message = message
+            self.visible = "display: block;"
+            self.update()
+        }
+
+        confirm()
+        {
+            self.visible = ""
+            var text = self.refs["text"].value
+            callback(text)
+        }
+
+        cancel()
+        {
+            self.visible = ""
+        }
+    </script>
+</editor>
+
+<checklist-dialog class="dialog" style="{ visible }">
+    <backdrop class="backdrop">
+        <div class="dialogbox">
+            <div class="dialog-content">
+                <div class="list">
+                    <div each="{ checkItem in list }" onclick="{ checkChange }" no-reorder>
+                        <span>{ checkItem.text }</span>
+                        <span class="pull-right">
+                            <i class="material-icons">{ checkItem.checked ? "&#xE834;" : "&#xE835;" }</i>
+                        </span>
+                    </div>
+                </div>
+            </div>
+            <div class="buttons">
+                <button class="btn btn-flat" onclick="{ confirm }">OK</button>
+            </div>
+        </div>
+    </backdrop>
+
+    <style>
+        :scope.dialog .backdrop
+        {
+            z-index: 100;
+        }
+
+        .dialogbox
+        {
+            height: 360px;
+        }
+
+        .dialogbox .dialog-content
+        {
+            padding: 0;
+        }
+
+        .dialogbox .buttons .btn
+        {
+            width: 100%;
+        }
+    </style>
+
+    <script>
+        "use strict"
+
+        var self = this
+
+        var callback
+
+        Dialog.checklist = function (list, _callback)
+        {
+            self.list = list
+            callback = _callback
+            self.visible = "display: block;"
+            self.update()
+        }
+
+        confirm()
+        {
+            self.visible = ""
+            callback()
+        }
+
+        checkChange(e)
+        {
+            e.item.checkItem.checked = !e.item.checkItem.checked
+        }
+    </script>
+</checklist-dialog>

@@ -1,0 +1,289 @@
+<reserve-edit class="panel" style="{ visible }">
+    <backdrop class="backdrop" onclick="{ hide }">
+        <panel class="right-panel">
+            <header class="header-bar">
+                <div class="pull-left text">予約編集</div>
+            </header>
+            <content class="content">
+                <div class="input-list">
+                    <div>タイトル</div>
+                    <div>
+                        <input type="text" ref="title" onchange="{ onchange }">
+                    </div>
+                    <div>サービス指定</div>
+                    <div>
+                        <div class="select-item" onclick="{ selectService }">{ service }</div>
+                    </div>
+                    <div>チューナ指定</div>
+                    <div>
+                        <div class="select-item" onclick="{ selectTuner }">{ tuner }</div>
+                    </div>
+                    <div>開始時間</div>
+                    <div>
+                        <input type="text" ref="start-time" onfocus="{ checkMode }" onchange="{ onchange }">
+                    </div>
+                    <div>終了時間</div>
+                    <div>
+                        <input type="text" ref="end-time" onfocus="{ checkMode }" onchange="{ onchange }">
+                    </div>
+                    <div>オプション</div>
+                    <div>
+                        <div class="chk" onclick="{ tunerLockChange }">
+                            <span>使用チューナ固定</span>
+                            <span class="pull-right">
+                                <i class="material-icons">{ tunerLock ? "&#xE834;" : "&#xE835;" }</i>
+                            </span>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="chk" onclick="{ modeChange }">
+                            <span>番組追従</span>
+                            <span class="pull-right">
+                                <i class="material-icons">{ eventMode ? "&#xE834;" : "&#xE835;" }</i>
+                            </span>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="chk" onclick="{ enableChange }">
+                            <span>有効</span>
+                            <span class="pull-right">
+                                <i class="material-icons">{ enable ? "&#xE834;" : "&#xE835;" }</i>
+                            </span>
+                        </div>
+                    </div>
+                    <div>
+                        <button class="btn primary" onclick="{ save }">保存</button>
+                    </div>
+                </div>
+            </content>
+        </panel>
+    </backdrop>
+
+    <text-menu ref="tunerselect"></text-menu>
+    <text-menu ref="serviceselect"></text-menu>
+
+    <script>
+        "use strict"
+
+        var self = this
+
+        var reserveId = null
+        var services = null
+        var modify = null
+
+        this.on('mount', function ()
+        {
+            getServices()
+        })
+
+        show(id)
+        {
+            reserveId = id
+            modify = false
+
+            load()
+
+            self.visible = "display: block;"
+            self.update()
+        }
+
+        hide(e)
+        {
+            if (e.target == e.currentTarget)
+            {
+                if (modify)
+                {
+                    Dialog.confirm('変更を保存しますか？', function ()
+                    {
+                        self.save()
+                        self.visible = ""
+                        self.update()
+                    })
+                }
+
+                self.visible = ""
+            }
+        }
+
+        onchange()
+        {
+            modify = true
+        }
+
+        checkMode()
+        {
+            if (self.eventMode)
+                Dialog.alert("この項目を変更する場合は、「番組追従」のチェックを外してください。")
+        }
+
+        save()
+        {
+            var title = self.refs["title"].value
+
+            var enable = self.enable ? 1 : 0
+            var eventMode = self.eventMode ? 2 : 0
+            var tunerLock = self.tunerLock ? 4 : 0
+            var status = enable + eventMode + tunerLock
+
+            var start = self.refs["start-time"].value
+            start = Date.parse(start)
+            start = new XDate(start)
+
+            var end = self.refs["end-time"].value
+            end = Date.parse(end)
+            end = new XDate(end)
+
+            if (title == "")
+            {
+                Dialog.alert("タイトルを入力してください。")
+                return
+            }
+
+            var arg = {
+                id: reserveId,
+                title: title,
+                eid: self.eid,
+                fsid: self.fsid,
+                tuner: self.tuner,
+                start: Webapi.convertDateTime(start),
+                duration: (end - start) / 1000,
+                status: status
+            }
+
+            Webapi.exec("AddReserve", arg, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("保存に失敗しました。\n理由 : " + ret.message)
+                    return
+                }
+
+                modify = false
+                Dialog.alert("保存しました。")
+
+                updateReserve()
+            })
+        }
+
+        function getServices()
+        {
+            var sql = "select fsid, name from service group by fsid order by id"
+
+            Webapi.getTable(sql, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("サービスの取得に失敗しました。理由 : " + ret.message)
+                    return
+                }
+
+                services = ret.data1
+
+                services.forEach(function (service)
+                {
+                    service.fsid = service[0]
+                    service.text = service[1]
+                })
+            })
+        }
+
+        selectService()
+        {
+            self.refs.serviceselect.show(services, function (item)
+            {
+                self.fsid = item.fsid
+                self.service = item.text
+                self.update()
+            })
+        }
+
+        selectTuner()
+        {
+            modify = true
+            var sql = "select name from tuner order by id"
+
+            Webapi.getTable(sql, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("チューナの取得に失敗しました。理由 : " + ret.message)
+                    return
+                }
+
+                var tuners = ret.data1
+
+                tuners.forEach(function (tuner)
+                {
+                    tuner.text = tuner[0]
+                })
+
+                self.refs.tunerselect.show(tuners, function (item)
+                {
+                    self.tuner = item.text
+                    self.update()
+                })
+            })
+        }
+
+        enableChange(e)
+        {
+            modify = true
+            self.enable = !self.enable
+        }
+
+        modeChange(e)
+        {
+            modify = true
+            self.eventMode = !self.eventMode
+        }
+
+        tunerLockChange(e)
+        {
+            modify = true
+            self.tunerLock = !self.tunerLock
+        }
+
+        function load()
+        {
+            var sql = "select title, fsid, eid, tuner, start, end, status from reserve where id = " + reserveId;
+
+            Webapi.getTable(sql, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("予約の取得に失敗しました。理由 : " + ret.message)
+                    return
+                }
+
+                var reserve = ret.data1[0]
+
+                self.refs["title"].value = reserve[0]
+                self.title = reserve[0]
+                self.fsid = Number(reserve[1])
+                self.eid = Number(reserve[2])
+                self.tuner = reserve[3]
+
+                var start = Webapi.convertXDate(reserve[4])
+                start = start == null ? "" : start.toString('yyyy/MM/dd HH:mm')
+                self.refs["start-time"].value = start
+
+                var end = Webapi.convertXDate(reserve[5])
+                end = end == null ? "" : end.toString('yyyy/MM/dd HH:mm')
+                self.refs["end-time"].value = end
+
+                var status = reserve[6]
+                self.eventMode = ReserveState.isEventMode(status)
+                self.enable = ReserveState.isEnable(status)
+                self.tunerLock = ReserveState.isTunerLock(status)
+
+                self.service = services.find(function (service)
+                {
+                    return self.fsid == service[0]
+                })[1]
+
+                self.update()
+            })
+        }
+    </script>
+</reserve-edit>
+

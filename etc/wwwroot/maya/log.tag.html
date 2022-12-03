@@ -1,0 +1,173 @@
+<log show="{ visible }">
+    <header class="header-bar">
+        <button onclick="history.back()" class="btn pull-left"><i class="material-icons">&#xE5C4;</i></button>
+        <div class="text pull-left">ログ ({ itemCount })</div>
+        <button class="btn pull-right" onclick="{ sync }"><i class="material-icons">&#xE627;</i></button>
+    </header>
+
+    <content class="main-content" ref="content" onscroll="{ onscroll }">
+        <div class="ilist" style="{ 'height:' + scrollHeight + 'px' }">
+            <div each="{ line in log }" style="{ 'top:' + line.top + 'px;' }" no-reorder>
+                <div class="pull-left">
+                    <i class="material-icons">{ line.icon }</i>
+                </div>
+                <div class="time">
+                    <div>{ line.day }</div>
+                    <div>{ line.time }</div>
+                </div>
+                <div>{ line.text }</div>
+            </div>
+        </div>
+    </content>
+
+    <pagetab></pagetab>
+
+    <style>
+        .main-content
+        {
+            -webkit-user-select: text;
+            -moz-user-select: text;
+            -ms-user-select: text;
+            user-select: text;
+        }
+
+        .ilist
+        {
+            background-color: white;
+        }
+
+        .ilist > div
+        {
+            position: absolute;
+            width: 100%;
+            justify-content: flex-start;
+            overflow: hidden;
+        }
+
+        .ilist .time
+        {
+            text-align: center;
+            min-width: 80px;
+            color: gray;
+        }
+    </style>
+
+    <script>
+        "use strict"
+
+        var self = this
+        var router = route.create()
+
+        var limit = 30
+        var itemHeight = 80
+        var contentTop = 0
+
+        router('log', function ()
+        {
+            self.visible = true
+            load()
+        })
+
+        router('..', function ()
+        {
+            self.visible = false
+            self.update()
+        })
+
+        sync()
+        {
+            load()
+        }
+
+        function load()
+        {
+            self.refs["content"].scrollTop = 0
+            
+            var sql = 'select count(time) from log'
+
+            getLog(sql, function (ret)
+            {
+                self.itemCount = ret.data1[0]
+                self.scrollHeight = itemHeight * self.itemCount
+
+                self.update()
+                loadLog()
+            })
+        }
+
+        function updateLog(force)
+        {
+            var content = self.refs["content"]
+
+            if (force || Math.abs(contentTop - content.scrollTop) > itemHeight * 10)
+            {
+                //表示されている時だけscrollTopを取得(0になるため)
+                if (self.visible)
+                    contentTop = content.scrollTop
+
+                loadLog()
+            }
+        }
+
+        //スクロールイベントを間引く
+        var onscroll2 = debounce(updateLog, 300)
+
+        onscroll()
+        {
+            onscroll2()
+        }
+
+        function loadLog()
+        {
+            var contentHeight = self.refs["content"].clientHeight
+            var offset = Math.floor(contentTop / itemHeight) - 10
+            if (offset < 0)
+                offset = 0
+
+            var sql = 'select type, time, text from log order by time desc limit {0} offset {1}'.format(limit, offset)
+
+            getLog(sql, function (ret)
+            {
+                self.log = ret.data1
+
+                var icons = {
+                    0: "\ue868",  //bug_report
+                    1: "\ue88f",  //info_outline
+                    2: "\ue002",  //warning
+                    3: "\ue5c9",  //cancel
+                    4: "\ue871"   //dashboard
+                }
+                
+                var i = 0
+
+                self.log.forEach(function (line)
+                {
+                    line.icon = icons[line[0]]
+
+                    var time = Webapi.convertXDate(line[1])
+                    line.day = time.toString("yy/MM/dd")
+                    line.time = time.toString("HH:mm:ss")
+
+                    line.text = line[2]
+
+                    line.top = Math.floor(itemHeight * i + itemHeight * offset)
+                    i++
+                })
+
+                self.update()
+            })
+
+        }
+
+        function getLog(sql, callback)
+        {
+            Webapi.exec("GetLog", { sql: sql }, function (ret)
+            {
+                if (ret.code == 0)
+                    callback(ret)
+                else
+                    Dialog.alert("ログの取得に失敗しました。理由 : " + ret.message)
+            })
+        }
+    </script>
+</log>

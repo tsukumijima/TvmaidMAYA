@@ -1,0 +1,79 @@
+<text-menu class="menu" style="{ visible }">
+    <backdrop class="backdrop" onclick="{ hide }">
+        <div class="list">
+            <div each="{ item in items }" onclick="{ selected }" no-reorder>
+                { item.text }
+            </div>
+        </div>
+    </backdrop>
+
+    <script>
+        "use strict"
+
+        var self = this
+        var callback
+
+        selected(e)
+        {
+            callback(e.item.item)
+        }
+
+        show(items, _callback)
+        {
+            callback = _callback
+            self.items = items
+            self.visible = "display: block;"
+            self.update()
+        }
+
+        hide()
+        {
+            self.visible = ""
+        }
+    </script>
+</text-menu>
+
+<info-menu class="menu" style="{ visible }">
+    <backdrop class="backdrop" onclick="{ hide }">
+        <div class="ilist" id="list">
+            <div each="{ item in items }" onclick="{ selected }" no-reorder>
+                <div>
+                    <div>{ item.text }</div>
+                    <div class="info">{ item.info }</div>
+                </div>
+            </div>
+        </div>
+    </backdrop>
+
+    <style>
+        #list
+        {
+            width: 360px;
+        }
+    </style>
+
+    <script>
+        "use strict"
+
+        var self = this
+        var callback
+
+        selected(e)
+        {
+            callback(e.item.item)
+        }
+
+        show(items, _callback)
+        {
+            callback = _callback
+            self.items = items
+            self.visible = "display: block;"
+            self.update()
+        }
+
+        hide()
+        {
+            self.visible = ""
+        }
+    </script>
+</info-menu>

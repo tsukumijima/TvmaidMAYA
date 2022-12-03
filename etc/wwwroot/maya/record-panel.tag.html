@@ -1,0 +1,180 @@
+<record-panel class="panel" style="{ visible }">
+    <backdrop class="backdrop" onclick="{ hide }">
+        <panel class="right-panel">
+            <header class="header-bar">
+                <button class="btn" show="{ online }" onclick="{ removeFile }"><i class="material-icons">&#xE872;</i></button>
+                <button class="btn pull-right" onclick="{ websearch }"><i class="material-icons">&#xE894;</i></button>
+            </header>
+
+            <content class="content" ref="content">
+                <div id="info">
+                    <div>
+                        <h4>{ title }</h4>
+                        <div>{ time }</div>
+                        <div>{ service }</div>
+                        <button show="{ online }" class="btn primary" onclick="{ playRecord }">再生</button>
+                        <button hide="{ online }" class="btn">再生不可</button>
+                    </div>
+                    <hr>
+                    <div>
+                        <div>{ message }</div>
+                        <div>{ file }</div>
+                        <div>{ errorPacket }</div>
+                    </div>
+                    <hr>
+                    <div>
+                        <div>
+                            [予約時刻]
+                            <br>
+                            { s_time }
+                            <br>
+                            <br>
+                        </div>
+                        <div>
+                            [自動予約]
+                            <br>
+                            { auto }
+                        </div>
+                    </div>
+                    <hr>
+                    <div>
+                        <div>
+                            <div ref="desc" />
+                            <br>
+                        </div>
+                        <div>
+                            <div ref="longdesc" />
+                            <br>
+                        </div>
+                        <div>
+                            <div ref="genreText" />
+                        </div>
+                    </div>
+                </div>
+            </content>
+        </panel>
+    </backdrop>
+
+    <style>
+        .content
+        {
+            -webkit-user-select: text;
+            -moz-user-select: text;
+            -ms-user-select: text;
+            user-select: text;
+        }
+
+        #info
+        {
+            padding: 1.5em 0;
+        }
+
+            #info > div
+            {
+                padding-left: 1.5em;
+                padding-right: 1.5em;
+            }
+
+            #info button
+            {
+                margin-top: 5px;
+                min-width: 100px;
+                min-height: 30px;
+            }
+    </style>
+
+    <script>
+        "use strict"
+
+        var self = this
+        var recordId = null
+
+        hide(e)
+        {
+            if (e.target == e.currentTarget)
+                self.visible = ""
+        }
+
+        removeFile()
+        {
+            Dialog.confirm('録画ファイルを削除してもいいですか？', function ()
+            {
+                Webapi.exec("RemoveFile", { id: recordId }, function (ret)
+                {
+                    if (ret.code != 0)
+                        Dialog.alert("録画ファイルの削除に失敗しました。再生中は削除できません。または削除権限がありません。")
+                    else
+                        Dialog.alert("削除しました。")
+
+                    self.show(recordId)
+                    RecordPage.update()
+                })
+            })
+        }
+
+        websearch()
+        {
+            window.open(Util.getWebSearchLink(self.title), '_blank')
+        }
+
+        playRecord()
+        {
+            RecordPlayPage.initVideo()
+            location.href = "#record-play/" + recordId
+        }
+
+        show(id)
+        {
+            recordId = id
+
+            var sql = "select title, service, file, start, end, reserve_start, reserve_end, code, error_count, drop_count, scramble_count, message, desc, longdesc, genre_text, auto, status from record"
+                    + " where record.id = " + recordId
+
+            Webapi.getTable(sql, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("録画の取得に失敗しました。理由 : " + ret.message)
+                    return
+                }
+
+                var record = ret.data1[0]
+
+                self.title = record[0]
+                self.service = record[1]
+                self.file = record[2]
+
+                var start = Webapi.convertXDate(record[3])
+                var end = Webapi.convertXDate(record[4])
+                self.time = start.toString("yyyy/") + Util.getTimeString(start, end)
+
+                var s_start = Webapi.convertXDate(record[5])
+                var s_end = Webapi.convertXDate(record[6])
+                self.s_time = Util.getTimeString(s_start, s_end)
+
+                var code = Number(record[7])
+                self.message = code == 0 ? "正常終了" : record[11]
+
+                var error_count = Number(record[8])
+                var drop_count = Number(record[9])
+                var scramble_count = Number(record[10])
+                self.errorPacket = "D: {0} S: {1} E: {2}".format(drop_count, scramble_count, error_count)
+
+                self.refs.desc.innerHTML = record[12].htmlText()
+                self.refs.longdesc.innerHTML = record[13].htmlText()
+                self.refs.genreText.innerHTML = record[14].htmlText2()
+
+                self.auto = record[15] == "" ? "---" : record[15]
+                self.online = (record[16] & 1) == 0
+
+                self.visible = "display: block;"
+                self.update()
+
+                self.refs["content"].scrollTop = 0
+            })
+        }
+    </script>
+</record-panel>
+
+
+

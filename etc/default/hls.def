@@ -1,0 +1,6 @@
+﻿encoder=ffmpeg.exe
+window=hide
+
+high=-i pipe: -f hls -hls_time 2 -hls_list_size 1 -hls_segment_filename {segment-id}-%d.ts -vcodec libx264  -quality realtime -s 1280x720 -vb 512k -r 30 -g 60 -flags +loop-global_header -acodec aac -ar 48000 -ab 192k -ac 2 -
+middle=-i pipe: -f hls -hls_time 2 -hls_list_size 1 -hls_segment_filename {segment-id}-%d.ts -vcodec libx264  -quality realtime -s 1024x576 -vb 512k -r 30 -g 60 -flags +loop-global_header -acodec aac -ar 48000 -ab 192k -ac 2 -
+low=-i pipe: -f hls -hls_time 2 -hls_list_size 1 -hls_segment_filename {segment-id}-%d.ts -vcodec libx264  -quality realtime -s 512x288 -vb 512k -r 30 -g 60 -flags +loop-global_header -acodec aac -ar 48000 -ab 192k -ac 2 -

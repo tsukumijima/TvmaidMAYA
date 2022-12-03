@@ -1,0 +1,26 @@
+﻿<pagetab class="header-bar">
+    <a href="#live" class="btn pull-left"><i class="material-icons">&#xE333;</i></a>
+    <a href="#epg" class="btn pull-left"><i class="material-icons">&#xE871;</i></a>
+    <a href="#reserve" class="btn pull-left"><i class="material-icons">&#xE8B5;</i></a>
+    <a href="#record" class="btn pull-left"><i class="material-icons">&#xE02C;</i></a>
+    <button onclick="{ fullscreen }" class="btn pull-right"><i class="material-icons">&#xE5D0;</i></button>
+    <button onclick="SettingPanel.show()" class="btn pull-right"><i class="material-icons">&#xE8B8;</i></button>
+
+    <style>
+        :scope
+        {
+            bottom: 0;
+        }
+    </style>
+
+    <script>
+        "use strict"
+
+        fullscreen()
+        {
+            var el = document.querySelector('body')
+            setFullscreen(el)
+        }
+    </script>
+
+</pagetab>

@@ -1,0 +1,7 @@
+﻿encoder=ffmpeg.exe
+type=video/webm
+window=hide
+
+high=-i pipe: -vcodec libvpx -b 700k -quality realtime -s 1280x720 -r 30000/1001 -acodec libvorbis -ab 128k -f webm -
+middle=-i pipe: -vcodec libvpx -b 700k -quality realtime -s 1024x576 -r 30000/1001 -acodec libvorbis -ab 128k -f webm -
+low=-i pipe: -vcodec libvpx -b 700k -quality realtime -s 512x288 -r 30000/1001 -acodec libvorbis -ab 128k -f webm -

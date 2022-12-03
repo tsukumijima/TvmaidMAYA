@@ -1,0 +1,381 @@
+var AutoReservePage = {}
+
+<auto-reserve show="{ visible }">
+    <header class="header-bar">
+        <button class="btn pull-left" onclick="MainMenu.show()"><i class="material-icons">&#xE5D2;</i></button>
+        <button class="btn pull-left" onclick="{ changeFolder }">{ folder } ({ itemCount })</button>
+        <button class="btn pull-right" onclick="{ sync }"><i class="material-icons">&#xE627;</i></button>
+        <button class="btn pull-right" onclick="{ addKeywords }"><i class="material-icons">&#xE145;</i></button>
+    </header>
+
+    <div id="tool-bar">
+        <button class="btn btn-flat" onclick="{ selectAll }">全選択</button>
+        <button class="btn btn-flat" onclick="{ deselectAll }">全解除</button>
+        <button class="btn btn-flat" onclick="{ enable }">有効</button>
+        <button class="btn btn-flat" onclick="{ disable }">無効</button>
+        <button class="btn btn-flat" onclick="{ move }">移動</button>
+        <button class="btn btn-flat" onclick="{ remove }">削除</button>
+    </div>
+
+    <content class="main-content">
+        <div class="list">
+            <div each="{ auto in autos }" class="{ auto[2] == 1 ? '' : 'disable'  }">
+                <div class="checkbox pull-left" onclick="{ checkChange }">
+                    <i class="material-icons">{ auto.checked ? "&#xE834;" : "&#xE835;" }</i>
+                </div>
+                <div onclick="{ editAutoReserve }">{ auto[1] } ({ auto[4] })</div>
+            </div>
+        </div>
+    </content>
+
+    <pagetab></pagetab>
+
+    <text-menu ref="folderselect"></text-menu>
+    <auto-reserve-edit></auto-reserve-edit>
+
+    <style>
+        #tool-bar
+        {
+            position: absolute;
+            left: 0;
+            top: 40px;
+            z-index: 20;
+            overflow: hidden;
+            height: 40px;
+            width: 100%;
+        }
+
+            #tool-bar .btn
+            {
+                color: white;
+            }
+
+        .main-content
+        {
+            margin-top: 80px;
+        }
+
+        .list .disable
+        {
+            background-color: lightgrey;
+        }
+    </style>
+
+    <script>
+        "use strict"
+
+        var self = this
+        var router = route.create()
+
+        AutoReservePage = {
+            update: function ()
+            {
+                load()
+            }
+        }
+
+        this.on("mount", function ()
+        {
+            self.folder = localStorage.getItem("auto-reserve/folder")
+
+            if (self.folder == null)
+                self.folder = "デフォルト"
+        })
+
+        router('auto-reserve/*', function (folder)
+        {
+            self.folder = folder
+            self.visible = true
+
+            load()
+        })
+
+        router('auto-reserve', function ()
+        {
+            self.visible = true
+
+            if (self.autos == null)
+                load()
+            else
+                self.update()
+        })
+
+        router('..', function ()
+        {
+            self.visible = false
+            self.update()
+        })
+
+        sync()
+        {
+            load()
+        }
+
+        addKeywords()
+        {
+            Dialog.editor("キーワードを入力してください。", function (text)
+            {
+                var words = text.split("\n");
+
+                //重複削除
+                words = words.filter(function (x, i, s)
+                {
+                    return s.indexOf(x) == i;
+                })
+
+                var count = words.length
+                var counter = {
+                    dec: function ()
+                    {
+                        count--
+                        if (count == 0)
+                        {
+                            load()
+                            updateReserve()
+                        }
+                    }
+                }
+
+                words.forEach(function (word)
+                {
+                    if (word == "")
+                    {
+                        counter.dec()
+                        return
+                    }
+
+                    var opt = new SearchOpt(word)
+
+                    var arg = {
+                        query: opt.toSql(),
+                        option: opt.toJson(),
+                        status: 1,
+                        name: word,
+                        folder: self.folder
+                    }
+
+                    Webapi.exec("AddAutoReserve", arg, function (ret)
+                    {
+                        if (ret.code != 0)
+                            Dialog.alert("追加に失敗しました。{0}\n理由 : {1}".format(word, ret.message))
+
+                        counter.dec()
+                    })
+                })
+            })
+        }
+
+        changeFolder(e)
+        {
+            self.folder = e.target.text
+            load()
+        }
+
+        move()
+        {
+            showFolderMenu(function (folder)
+            {
+                if (folder == self.folder)
+                    return
+
+                selectForEach(function (auto, counter)
+                {
+                    var id = auto[0]
+
+                    Webapi.exec("AddAutoReserve", { id: id, folder: folder }, function (ret)
+                    {
+                        if (ret.code != 0)
+                            Dialog.alert("移動に失敗しました。\n理由 : " + ret.message)
+
+                        counter.dec()
+                        setFolderMenu()
+                    })
+                })
+            })
+        }
+
+        enable()
+        {
+            enableAutoReserve(true)
+        }
+
+        disable()
+        {
+            enableAutoReserve(false)
+        }
+
+        function enableAutoReserve(enable)
+        {
+            selectForEach(function (auto, counter)
+            {
+                var id = auto[0]
+                var status = enable ? 1 : 0
+
+                Webapi.exec("AddAutoReserve", { id: id, status: status }, function (ret)
+                {
+                    if (ret.code != 0)
+                        Dialog.alert("有効化に失敗しました。\n理由 : " + ret.message)
+
+                    counter.dec()
+                })
+            })
+        }
+
+        remove()
+        {
+            Dialog.confirm("選択された自動予約を削除してもいいですか？", function ()
+            {
+                selectForEach(function (auto, counter)
+                {
+                    var id = auto[0]
+
+                    Webapi.exec("RemoveAutoReserve", { id: id }, function (ret)
+                    {
+                        if (ret.code != 0)
+                            Dialog.alert("削除に失敗しました。\n理由 : " + ret.message)
+
+                        counter.dec()
+                    })
+                })
+            })
+        }
+
+        function selectForEach(callback)
+        {
+            var count = self.autos.length
+            var counter = {
+                dec: function ()
+                {
+                    count--
+                    if (count == 0)
+                    {
+                        load()
+                        updateReserve()
+                    }
+                }
+            }
+
+            self.autos.forEach(function (auto)
+            {
+                if (auto.checked)
+                    callback(auto, counter)
+                else
+                    counter.dec()
+            })
+        }
+
+        selectAll()
+        {
+            self.autos.forEach(function (auto)
+            {
+                auto.checked = true
+            })
+        }
+
+        deselectAll()
+        {
+            self.autos.forEach(function (auto)
+            {
+                auto.checked = false
+            })
+        }
+
+        checkChange(e)
+        {
+            e.item.auto.checked = e.item.auto.checked ? false : true
+        }
+
+        editAutoReserve(e)
+        {
+            var id = e.item.auto[0]
+            self.tags["auto-reserve-edit"].show(id, function ()
+            {
+                load()
+            })
+        }
+
+        changeFolder()
+        {
+            showFolderMenu(function (folder)
+            {
+                self.folder = folder
+                load()
+                localStorage.setItem("auto-reserve/folder", self.folder)
+            })
+        }
+
+        function showFolderMenu(callback)
+        {
+            getFolders(function(folders)
+            {
+                folders.forEach(function (folder)
+                {
+                    folder.text = folder[0]
+                })
+
+                folders.unshift({ text: "新しいフォルダ名を指定...", value: "new" })
+
+                self.refs.folderselect.show(folders, function (item)
+                {
+                    if (item.value != "new")
+                        callback(item.text)
+                    else
+                    {
+                        Dialog.prompt("フォルダ名を入力してください", function (name)
+                        {
+                            callback(name)
+                        })
+                    }
+                })
+            })
+        }
+
+        function getFolders(callback)
+        {
+            var sql = 'select folder from auto_reserve group by folder order by folder'
+
+            Webapi.getTable(sql, function (ret)
+            {
+                if (ret.code != 0)
+                    Dialog.alert("自動予約フォルダの取得に失敗しました。理由 : " + ret.message)
+                else
+                    callback(ret.data1)
+            })
+        }
+
+        function load()
+        {
+            var sql = "select auto_reserve.id, name, auto_reserve.status, option, count(auto) from auto_reserve"
+                    + " left join reserve on auto_reserve.id = reserve.auto"
+                    + " where folder = '{0}'".format(Webapi.sqlEncode(self.folder))
+                    + " group by auto_reserve.id"
+                    + " order by name";
+
+            Webapi.getTable(sql, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("自動予約の取得に失敗しました。理由 : " + ret.message)
+                    return
+                }
+
+                self.autos = ret.data1
+                self.update()
+            })
+
+            sql = "select count(id) from auto_reserve where folder = '{0}'".format(Webapi.sqlEncode(self.folder));
+
+            Webapi.getTable(sql, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("自動予約数の取得に失敗しました。理由 : " + ret.message, "")
+                    return
+                }
+
+                self.itemCount = ret.data1[0]
+                self.update()
+            })
+        }
+    </script>
+</auto-reserve>

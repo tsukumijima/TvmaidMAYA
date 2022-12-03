@@ -1,0 +1,275 @@
+var SearchPage = {}
+
+<search show="{ visible }">
+    <header class="header-bar">
+        <button class="btn pull-left" onclick="MainMenu.show()"><i class="material-icons">&#xE5D2;</i></button>
+        <div class="text pull-left">検索 ({ itemCount })</div>
+        <button class="btn pull-right" onclick="{ search }"><i class="material-icons">&#xE8B6;</i></button>
+        <input type="search" class="pull-right" placeholder="番組を検索..." value="{ keyword }" ref="keyword-input" onkeyup="{ watchKey }">
+        <button class="btn pull-right" onclick="{ searchHistory }"><i class="material-icons">&#xE5C5;</i></button>
+    </header>
+
+    <content class="main-content" ref="content" onscroll="{ onscroll }">
+        <div style="{ scrollHeight }">
+            <div class="ilist" style="{ listTop }">
+                <div each="{ event in events }"
+                     class="{ event.genre }"
+                     onclick="{ showEventPanel }"
+                     no-reorder>
+                    <div>
+                        <div><span if="{ event.reserveStatus != '' }" class='reserve-label { event.reserveStatus }'>{ event.tuner }</span>{ event[1] }</div>
+                        <div class='info'>{ event.info }</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </content>
+
+    <pagetab></pagetab>
+    <event-panel></event-panel>
+    <text-menu ref="historyselect"></text-menu>
+
+    <style>
+        .ilist
+        {
+            position: absolute;
+            background-color: white;
+            width: 100%;
+        }
+
+            .ilist > div
+            {
+                position: relative;
+            }
+
+        .reserve-label
+        {
+            display: none;
+        }
+
+            .reserve-label.enable
+            {
+                display: inline;
+                background-color: tomato;
+                color: white;
+            }
+
+            .reserve-label.overlay
+            {
+                display: block;
+                background-color: yellow;
+            }
+
+            .reserve-label.disable
+            {
+                display: block;
+                background-color: gray;
+                color: white;
+            }
+
+        input[type="search"]
+        {
+            height: 24px;
+            margin: 8px 0;
+            width: 150px;
+        }
+
+            input[type="search"]:focus
+            {
+                border-bottom-width: 0px;
+            }
+    </style>
+
+    <script>
+        "use strict"
+
+        var self = this
+        var router = route.create()
+
+        var limit = 30
+        var itemHeight = 80
+        var contentTop = 0
+
+        var searchOpt = new SearchOpt()
+
+        SearchPage = {
+            update: function ()
+            {
+                if (self.events != null)
+                    updateEvent(true)
+            }
+        }
+        
+        router('search..', function (keyword)
+        {
+            var keyword = route.query().keyword
+
+            keyword = keyword == null ? "" : decodeURIComponent(keyword)
+            self.visible = true
+
+            //読み込みの必要なし
+            if (self.events != null && keyword == searchOpt.keyword)
+                self.update()
+            else
+            {
+                searchOpt.keyword = keyword
+                load()
+            }
+        })
+        
+        router('..', function ()
+        {
+            self.visible = false
+            self.update()
+        })
+
+        showEventPanel(e)
+        {
+            var id = e.item.event[0]
+            self.tags["event-panel"].show(id)
+        }
+
+        watchKey(e)
+        {
+            if (e.which == 13)
+                this.search()
+        }
+
+        searchHistory()
+        {
+            var hist = KeywordHistoy.getList()
+            var list = []
+
+            hist.forEach(function (item)
+            {
+                list.push({ text: item })
+            })
+
+            if (list.length == 0)
+            {
+                Dialog.alert("履歴はありません。")
+                return
+            }
+
+            self.refs.historyselect.show(list, function (item)
+            {
+                routing(item.text)
+            })
+        }
+
+        function routing(keyword)
+        {
+            router("search?keyword={0}&{1}".format(
+                keyword == null ? searchOpt.keyword : encodeURIComponent(keyword),
+                XDate.now()))
+        }
+
+        search()
+        {
+            var keyword = self.refs["keyword-input"].value
+            KeywordHistoy.save(keyword)
+            self.events = null
+            routing(keyword)
+        }
+
+        function load()
+        {
+            self.keyword = searchOpt.keyword
+
+            var where = searchOpt.toSql()
+            var now = Webapi.convertDateTime(new XDate(XDate.now()))
+            var sql = 'select count(id) from event where end > {0} and event.id in ({1})'.format(now, where)
+
+            Webapi.getTable(sql, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("検索数の取得に失敗しました。理由 : " + ret.message)
+                    return
+                }
+
+                self.itemCount = ret.data1[0]
+                self.scrollHeight = "height:{0}px".format(itemHeight * self.itemCount)
+
+                self.update()
+                loadEvent()
+                self.refs["content"].scrollTop = 0
+            })
+        }
+
+        function updateEvent(force)
+        {
+            var content = self.refs["content"]
+
+            if (force || Math.abs(contentTop - content.scrollTop) > itemHeight * 10)
+            {
+                //表示されている時だけscrollTopを取得(0になるため)
+                if (self.visible)
+                    contentTop = content.scrollTop
+
+                loadEvent()
+            }
+        }
+
+        //スクロールイベントを間引く
+        var onscroll2 = debounce(updateEvent, 300)
+
+        onscroll()
+        {
+            onscroll2()
+        }
+
+        function loadEvent()
+        {
+            var offset = Math.floor(contentTop / itemHeight) - 10
+            if (offset < 0)
+                offset = 0
+
+            var where = searchOpt.toSql()
+            var now = Webapi.convertDateTime(new XDate(XDate.now()))
+            var sql = "select event.id, event.title, service.name, event.start, event.end, genre, status, tuner from event"
+                    + " left join service on event.fsid = service.fsid"
+                    + " left join reserve on reserve.fsid = event.fsid and reserve.eid = event.eid"
+                    + " where event.end > {0} and event.id in ({1})".format(now, where)
+                    + " group by event.id"  //別チューナの複数のサービスに番組があるのでまとめる
+                    + " order by event.start limit {0} offset {1}".format(limit, offset)
+
+            Webapi.getTable(sql, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("録画の取得に失敗しました。理由 : " + ret.message)
+                    return
+                }
+
+                self.events = ret.data1
+                self.listTop = "top:{0}px;".format(Math.floor(itemHeight * offset))
+
+                self.events.forEach(function (event)
+                {
+                    var start = Webapi.convertXDate(event[3]);
+                    var end = Webapi.convertXDate(event[4]);
+
+                    event.info = "{0} {1}".format(
+                        Util.getTimeString(start, end),
+                        event[2])
+
+                    event.genre = Genre.getFirstClass(event[5])
+
+                    var status = event[6]
+
+                    if (status == null)
+                        event.reserveStatus = ""
+                    else if (ReserveState.isEnable(status))
+                        event.reserveStatus = ReserveState.isOverlay(status) ? "overlay" : "enable"
+                    else
+                        event.reserveStatus = "disable"
+
+                    event.tuner = event[7] == null ? "" : "[{0}]".format(event[7])
+                })
+
+                self.update()
+            })
+        }
+    </script>
+</search>

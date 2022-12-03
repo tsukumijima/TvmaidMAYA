@@ -1,0 +1,729 @@
+﻿var RecordPlayPage = {}
+
+<record-play show="{ visible }" class="{ fullwindow: fullwindow }">
+    <header class="header-bar">
+        <button onclick="history.back()" class="btn pull-left"><i class="material-icons">&#xE5C4;</i></button>
+        <button class="btn pull-right" onclick="{ showRecordPanel }"><i class="material-icons">&#xE88F;</i></button>
+        <button class="btn pull-right" onclick="{ changeChatMode }"><i class="material-icons">{ chatMode ? "&#xE0B7;" : "&#xE0CA;"  }</i></button>
+        <button class="btn pull-right" onclick="{ changePlayRate }">{ playRate }倍</button>
+    </header>
+
+    <content class="video-content">
+        <video preload="none"
+               playsinline
+               ontimeupdate="{ ontimeupdate }"
+               onplay="{ onplay }"
+               onpause="{ onpause }"
+               onprogress="{ onprogress }"
+               onloadstart="{ onload }"
+               onerror="{ onerror }"
+               onstalled="{ onwait }"
+               onratechange="{ onratechange  }"
+               ref="video" />
+        <div id="video-state">{ videoState }</div>
+    </content>
+
+    <div id="chat-window-parent">
+        <canvas ref="chat-window"></canvas>
+    </div>
+
+    <div id="screen-button">
+        <div onclick="{ rewind }"></div>
+        <div onclick="{ setFullwindow }"></div>
+        <div onclick="{ forword }"></div>
+    </div>
+
+    <div id="seekbar" ref="seekbar">
+        <div>
+            <div id="durationbar"></div>
+            <div id="currentbar" ref="currentbar"></div>
+        </div>
+    </div>
+    <div id="controler" class="header-bar">
+        <button class="btn" onclick="{ playToggle }"><i class="material-icons">{ playIcon ? "&#xE037;" : "&#xE034;" }</i></button>
+        <button class="btn" onclick="{ stop }"><i class="material-icons">&#xE047;</i></button>
+        <button class="btn" onclick="{ longseek }" id="time-counter">{ timeCounter }</button>
+        <button class="btn pull-right" onclick="{ fullscreen }"><i class="material-icons">&#xE5D0;</i></button>
+    </div>
+
+    <record-panel></record-panel>
+    <text-menu ref="longseekmenu"></text-menu>
+    <text-menu ref="serviceselect"></text-menu>
+
+    <style>
+        #video-state
+        {
+            position: absolute;
+            right: 12px;
+            top: 50px;
+            color: white;
+            background-color: rgba(0, 0, 0, .5);
+        }
+
+        #chat-window-parent
+        {
+            position: absolute;
+            top: 50px;
+            left: 0;
+            right: 0;
+            bottom: 50px;
+            overflow: hidden;
+        }
+
+        #screen-button
+        {
+            width: 100%;
+            height: 100%;
+            display: -webkit-flex;
+            display: flex;
+        }
+
+            #screen-button div
+            {
+                z-index: 10;
+                height: 100%;
+                width: -webkit-calc(100% - 160px);
+                width: calc(100% - 160px);
+            }
+
+                #screen-button div:first-child,
+                #screen-button div:last-child
+                {
+                    width: 80px;
+                }
+
+                    #screen-button div:first-child:active,
+                    #screen-button div:last-child:active
+                    {
+                        background-color: rgba(128, 128, 128, .5) !important;
+                    }
+
+        :scope > .header-bar,
+        :scope > #controler,
+        :scope > #seekbar
+        {
+            background-color: rgba(0, 0, 0, .2);
+        }
+
+        :scope.fullwindow > .header-bar,
+        :scope.fullwindow > #controler,
+        :scope.fullwindow > #seekbar
+        {
+            display: none;
+        }
+
+        #controler
+        {
+            bottom: 0;
+        }
+
+            #controler #time-counter
+            {
+                padding: 0 6px;
+            }
+
+        #seekbar
+        {
+            position: absolute;
+            left: 0;
+            width: 100%;
+            bottom: 40px;
+            height: 25px;
+            z-index: 20;
+            cursor: pointer;
+            -ms-touch-action: none; /* IE10 */
+            touch-action: none;
+        }
+
+            #seekbar > div
+            {
+                position: relative;
+                margin: 0 12px;
+                height: 100%;
+            }
+
+            #seekbar #durationbar
+            {
+                position: absolute;
+                top: 20px;
+                left: 0;
+                width: 100%;
+                height: 4px;
+                background-color: gray;
+                pointer-events: none;
+            }
+
+            #seekbar #currentbar
+            {
+                position: absolute;
+                top: 20px;
+                left: 0;
+                width: 0;
+                height: 4px;
+                background-color: red;
+                pointer-events: none;
+            }
+    </style>
+
+    <script>
+        "use strict"
+
+        var self = this
+        var router = route.create()
+
+        var video
+        var seekbar
+        var loaded = false
+
+        var streamType
+        var streamId = XDate.now()
+        var hlsjs
+
+        var recordId
+        var startTime = 0       //読み込み開始位置
+        var pauseTimer = null   //一時停止時間をはかるタイマー
+        var seeking = false
+        var playRate = 1        //再生速度を保存
+
+        var chatWindow = new ChatWindow()
+        var chatInfo = {
+            start: 0,
+            end: 0,
+            service: "",
+            fsid: 0,
+            opened: false
+        }
+
+        RecordPlayPage = {
+            //「再生」ボタンが押されたときにloadを実行する
+            //モバイルブラウザ対策
+            initVideo: function ()
+            {
+                video.load()
+            }
+        }
+
+        this.on("mount", function ()
+        {
+            video = self.refs["video"]
+            seekbar = self.refs["seekbar"]
+
+            self.chatMode = localStorage.getItem("record/chat-mode") == 1
+
+            seekbar.update = function (current)
+            {
+                seekbar.current = current
+                var pos = seekbar.current / seekbar.duration * 100 + "%"
+                self.refs["currentbar"].style.width = pos
+            }
+
+            var eventName = getEventName()
+
+            //シークバードラッグ開始
+            var start = function (e)
+            {
+                seeking = true
+                dragSeekbar(e)
+
+                seekbar.addEventListener(eventName.move, move, false)
+                document.addEventListener(eventName.end, end, false)    //これはdocumentに設定する
+            }
+
+            //シークバードラッグ中
+            var move = function (e)
+            {
+                dragSeekbar(e)
+            }
+
+            //シークバードラッグ終了
+            var end = function ()
+            {
+                seeking = false
+                seekbar.removeEventListener(eventName.move, move, false)
+                document.removeEventListener(eventName.end, end, false)
+                seek()
+            }
+
+            seekbar.addEventListener(eventName.start, start, false)
+        })
+
+        function dragSeekbar(e)
+        {
+            var point = e.changedTouches ? e.changedTouches[0] : e;     //タッチかマウスかチェック
+            var x = point.clientX - e.currentTarget.getBoundingClientRect().left;   //seekbar内の座標取得
+
+            var pos = x / seekbar.clientWidth * seekbar.duration
+            if (pos < 0) pos = 0
+            if (pos > seekbar.duration) pos = seekbar.duration
+
+            seekbar.update(pos)
+            self.timeCounter = "{0} / {1}".format(getTimeString(seekbar.current), getTimeString(seekbar.duration))
+        }
+
+        //マウス/タッチイベント名取得
+        function getEventName()
+        {
+            var device = {
+                touch: typeof document.ontouchstart !== 'undefined',
+                pointer: window.navigator.pointerEnabled,
+                mspointer: window.navigator.msPointerEnabled
+            }
+
+            return {
+                start: device.pointer ? 'pointerdown' : device.mspointer ? 'MSPointerDown' : device.touch ? 'touchstart' : 'mousedown',
+                move: device.pointer ? 'pointermove' : device.mspointer ? 'MSPointerMove' : device.touch ? 'touchmove' : 'mousemove',
+                end: device.pointer ? 'pointerup' : device.mspointer ? 'MSPointerUp' : device.touch ? 'touchend' : 'mouseup'
+            }
+        }
+
+        router('record-play/*', function (id)
+        {
+            recordId = id
+            self.visible = true
+            self.timeCounter = "0:00 / 0:00"
+            self.playIcon = true    //true: play_arrow, false: pause
+            self.playRate = playRate
+
+            streamType = localStorage.getItem("stream-type")
+            self.mode = localStorage.getItem("video-mode")
+
+            getRecord()
+        })
+
+        router('..', function ()
+        {
+            self.stop()
+            self.visible = false
+            self.update()
+        })
+
+        changeChatMode()
+        {
+            self.chatMode = !self.chatMode
+            localStorage.setItem("record/chat-mode", self.chatMode ? 1 : 0)
+
+            startChat()
+        }
+
+        onratechange()
+        {
+            self.playRate = video.playbackRate
+            chatWindow.setRate(Number(self.playRate))
+        }
+
+        changePlayRate()
+        {
+            video.playbackRate = video.playbackRate >= 2 ? 1 : Math.floor((video.playbackRate + 0.2) * 100) / 100
+        }
+
+        showRecordPanel()
+        {
+            self.tags["record-panel"].show(recordId)
+        }
+
+        fullscreen()
+        {
+            var el = document.querySelector('body')
+            setFullscreen(el)
+        }
+
+        longseek(e)
+        {
+            var list =
+                [
+                    { text: "最初から", jump: 0 },
+                    { text: "-10分", jump: -600 },
+                    { text: "-3分", jump: -180 },
+                    { text: "-2分", jump: -120 },
+                    { text: "-1分", jump: -60 },
+                    { text: "-30秒", jump: -30 },
+                    { text: "+30秒", jump: 30 },
+                    { text: "+1分", jump: 60 },
+                    { text: "+2分", jump: 120 },
+                    { text: "+3分", jump: 180 },
+                    { text: "+10分", jump: 600 },
+                ]
+
+            self.refs.longseekmenu.show(list, function (item)
+            {
+                var pos = item.jump == 0 ? 0 : seekbar.current + item.jump
+
+                if (pos < 0)
+                    pos = 0
+                else if (pos > seekbar.duration - 1)
+                    pos = seekbar.duration - 1
+
+                seekbar.update(pos)
+                seek()
+            })
+        }
+
+        var shortSeekJunp = 0
+
+        function shortSeek()
+        {
+            setTimeout(function (jump)
+            {
+                //1秒後も位置が同じならシーク実行
+                if (shortSeekJunp == jump)
+                {
+                    var pos = seekbar.current + shortSeekJunp
+
+                    if (pos < 0)
+                        pos = 0
+                    else if (pos >= seekbar.duration)
+                        pos = seekbar.duration
+
+                    seekbar.update(pos)
+                    shortSeekJunp = 0
+                    seek()
+                }
+
+            }, 1000, shortSeekJunp)
+        }
+
+        forword()
+        {
+            shortSeekJunp += 10
+            shortSeek()
+            self.videoState = "+" + shortSeekJunp
+        }
+
+        rewind()
+        {
+            shortSeekJunp -= 10
+            shortSeek()
+            self.videoState = shortSeekJunp
+        }
+
+        setFullwindow()
+        {
+            self.fullwindow = !self.fullwindow
+        }
+
+        onplay()
+        {
+            video.playbackRate = self.playRate
+            self.playIcon = false //pause
+
+            if (pauseTimer != null)
+            {
+                clearTimeout(pauseTimer)
+                pauseTimer = null
+
+                chatWindow.resume()
+            }
+            else
+                startChat()
+        }
+
+        onpause()
+        {
+            self.playIcon = true    //play_arrow
+
+            chatWindow.pause()
+
+            if (loaded)
+            {
+                pauseTimer = setTimeout(function ()
+                {
+                    self.stop()
+                }, 60 * 1000)
+            }
+        }
+
+        onwait()
+        {
+            self.videoState = "Waiting..."
+        }
+
+        onload()
+        {
+            if (loaded)
+                self.videoState = "Loading..."
+        }
+
+        onerror()
+        {
+            if (loaded == false)
+                return
+
+            var error = {
+                1: "中断されました。",
+                2: "ネットワークでエラーが発生しました。",
+                3: "再生できないデータです。",
+                4: "ストリーミング方式の設定が間違っているか、録画中などの理由により再生に失敗しました。"
+            }
+
+            var message = error[video.error.code]
+            Dialog.alert(message == null ? "不明なエラーです。" : message, "");
+        }
+
+        onprogress()
+        {
+            self.videoState = ""
+        }
+
+        stop()
+        {
+            if (loaded == false)
+                return
+
+            pauseTimer = null
+            loaded = false
+            playRate = self.playRate    //再生速度を保存
+
+            if (video.paused == false)
+                video.pause()
+
+            video.src = ""
+
+            if (streamType == "hls" || streamType == "hls emu")
+                Webapi.exec("StopHls", { stream: streamId }, function (ret) { })
+
+            if (streamType == "hls emu")
+                stopHlsEmu()
+
+            self.onpause()
+        }
+
+        function seek()
+        {
+            if (seekbar.current < seekbar.duration)
+            {
+                if (seekbar.current < 0)
+                    seekbar.update(0)
+
+                loaded = false
+                play()
+            }
+            else
+                self.stop()
+        }
+
+        function playHlsEmu(url)
+        {
+            hlsjs = new Hls({ manifestLoadingTimeOut: 20000, manifestLoadingMaxRetry: 3, maxMaxBufferLength: 10 })
+            hlsjs.on(Hls.Events.MEDIA_ATTACHED, function ()
+            {
+                hlsjs.on(Hls.Events.MANIFEST_PARSED, function ()
+                {
+                    video.play()
+                    loaded = true
+                })
+                hlsjs.loadSource(url)
+            })
+            hlsjs.attachMedia(video)
+        }
+
+        function stopHlsEmu()
+        {
+            if (hlsjs != null)
+            {
+                hlsjs.detachMedia()
+                hlsjs.destroy()
+                hlsjs = null
+            }
+        }
+
+        function play()
+        {
+            if (loaded)
+            {
+                video.play()
+                return
+            }
+
+            startTime = Math.floor(seekbar.current)
+
+            if (streamType == "hls" || streamType == "hls emu")
+            {
+                var ready = localStorage.getItem("hls-ready")
+                self.videoState = "Starting..."
+
+                Webapi.exec("StartHls", { stream: streamId, type: "record", id: recordId, start: startTime, mode: self.mode, ready: ready }, function (ret)
+                {
+                    if (streamType == "hls")
+                    {
+                        video.src = "/hls-playlist/stream.m3u8?stream=" + streamId
+                        video.load()
+                        video.play()
+                        loaded = true
+                    }
+                    else
+                    {
+                        stopHlsEmu()
+                        playHlsEmu("/hls-playlist/stream.m3u8?stream=" + streamId)
+                    }
+                })
+            }
+            else
+            {
+                video.src = "/record-stream/stream?id={0}&mode={1}&start={2}".format(recordId, self.mode, startTime)
+                video.load()    //一部のブラウザではこれがないと動かない
+                video.play()
+                loaded = true
+            }
+        }
+
+        playToggle()
+        {
+            if (recordId == null)
+                return
+
+            if (loaded && video.paused == false)
+                video.pause()
+            else
+                play()
+        }
+
+        ontimeupdate()
+        {
+            if (recordId == null || loaded == null || video.paused || seeking)
+                return
+
+            seekbar.update(Number(video.currentTime) + startTime)
+
+            self.timeCounter = "{0} / {1}".format(getTimeString(seekbar.current), getTimeString(seekbar.duration))
+            localStorage.setItem("record-play/" + recordId, seekbar.current)
+        }
+
+        function getTimeString(time)
+        {
+            var sec = Math.floor(time % 60)
+            return "{0}:{1}".format(Math.floor(time / 60), sec > 9 ? sec : "0" + sec)
+        }
+
+        function getRecord()
+        {
+            var sql = "select start, end, service, fsid from record left join service on record.service = service.name where record.id = " + recordId
+
+            Webapi.getTable(sql, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("録画情報の取得に失敗しました。理由 : " + ret.message)
+                    return
+                }
+
+                var record = ret.data1[0]
+
+                chatInfo.start = Math.floor(Webapi.convertXDate(record[0]).valueOf() / 1000)
+                chatInfo.end = Math.floor(Webapi.convertXDate(record[1]).valueOf() / 1000)
+                chatInfo.service = record[2]
+                chatInfo.fsid = record[3]
+                chatInfo.opened = false
+
+                var duration = Number(record[1]) - Number(record[0])
+                duration = Math.floor(duration / 10000000)
+
+                seekbar.duration = duration
+
+                var pos = localStorage.getItem("record-play/" + recordId)
+                seekbar.update((pos == null || pos == "undefined" || pos == "NaN") ? 0 : Number(pos))
+
+                self.update()
+                play()
+            })
+        }
+
+        function selectService()
+        {
+            var message = "この録画のサービス '{0}' のIDが取得できませんでした。手動でサービスを選択しますか？".format(chatInfo.service)
+
+            Dialog.confirm(message, function ()
+            {
+                var sql = "select fsid, name from service group by fsid order by id"
+
+                Webapi.getTable(sql, function (ret)
+                {
+                    if (ret.code != 0)
+                    {
+                        Dialog.alert("サービスの取得に失敗しました。理由 : " + ret.message)
+                        return
+                    }
+
+                    var services = ret.data1
+
+                    services.forEach(function (service)
+                    {
+                        service.fsid = service[0]
+                        service.text = service[1]
+                    })
+
+                    self.refs.serviceselect.show(services, function (item)
+                    {
+                        chatInfo.fsid = item.fsid
+                        startChat()
+                    })
+                })
+            })
+        }
+
+        window.addEventListener('resize', function ()
+        {
+            if (loaded && video.paused == false && self.chatMode)
+                chatWindow.init(self.refs["chat-window"])
+        })
+
+        function startChat()
+        {
+            if (self.chatMode == false)
+                return
+
+            if (chatInfo.opened)
+            {
+                getChat(true)
+                return
+            }
+
+            if (chatInfo.fsid == null)
+            {
+                selectService()
+                return
+            }
+
+            self.chats = []
+
+            Webapi.exec("OpenChatServer", { type: 2, id: streamId, fsid: chatInfo.fsid, start: chatInfo.start, end: chatInfo.end }, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("コメントサーバに接続できません。" + ret.message)
+                    return
+                }
+
+                chatInfo.opened = true
+                getChat(true)
+            })
+        }
+
+        function getChat(init)
+        {
+            if (loaded == false || video.paused || self.chatMode == false)
+            {
+                if (loaded == false || self.chatMode == false)
+                    chatWindow.stop()
+
+                return
+            }
+
+            if (init)
+                chatWindow.init(self.refs["chat-window"], true)
+
+            var time = chatInfo.start + Math.floor(seekbar.current)
+
+            Webapi.exec("GetChat", { id: streamId, time: time, max: (init ? 0 : 100) }, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("コメントが取得できません。" + ret.message)
+                    return
+                }
+
+                chatWindow.add(ret.data1)
+                setTimeout(getChat, 5000)
+            })
+        }
+    </script>
+</record-play>

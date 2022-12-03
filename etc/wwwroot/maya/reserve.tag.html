@@ -1,0 +1,272 @@
+var ReservePage = {}
+
+<reserve show="{ visible }">
+    <header class="header-bar">
+        <button class="btn pull-left" onclick="MainMenu.show()"><i class="material-icons">&#xE5D2;</i></button>
+        <div class="text pull-left">予約 ({ itemCount })</div>
+        <button class="btn pull-right" onclick="{ sync }"><i class="material-icons">&#xE627;</i></button>
+        <button class="btn pull-right" onclick="{ resetTuner }"><i class="material-icons">&#xE164;</i></button>
+        <button class="btn pull-right" id="edit-mode" onclick="{ changeEditMode }"><i class="material-icons">{ editMode ? "&#xE22B;" : "&#xE3C9;" }</i></button>
+        <a class="btn pull-right" href="#auto-reserve"><i class="material-icons">&#xE146;</i></a>
+    </header>
+
+    <content class="main-content">
+        <div class="ilist">
+            <div each="{ reserve in reserves }" onclick="{ action }" class="{ reserve.status }" no-reorder>
+                <div>
+                    <div>{ reserve[1] }</div>
+                    <div class='info'>{ reserve.info }</div>
+                </div>
+                <button class="btn btn-flat" onclick="{ removeReserve }">
+                    <i class="material-icons">&#xE5CD;</i>
+                </button>
+            </div>
+        </div>
+    </content>
+
+    <pagetab></pagetab>
+    <event-panel></event-panel>
+    <reserve-edit></reserve-edit>
+
+    <style>
+        .ilist
+        {
+            background-color: white;
+        }
+
+            .ilist > div
+            {
+                padding-right: 0;
+            }
+
+            .ilist .disable
+            {
+                background-color: lightgray;
+            }
+
+            .ilist .overlay
+            {
+                background-color: yellow;
+            }
+    </style>
+
+    <script>
+        "use strict"
+
+        var self = this
+        var router = route.create()
+
+        ReservePage = {
+            update: function ()
+            {
+                load()
+            }
+        }
+
+        this.on("mount", function ()
+        {
+            self.editMode = false
+        })
+
+        router('reserve', function ()
+        {
+            self.visible = true
+
+            if (self.reserves == null)
+                load()
+            else
+                self.update()
+        })
+
+        router('..', function ()
+        {
+            self.visible = false
+            self.update()
+        })
+
+        changeEditMode()
+        {
+            self.editMode = !self.editMode
+        }
+
+        resetTuner()
+        {
+            Webapi.exec("ResetReserveTuner", {}, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("チューナのリセットに失敗しました。\n理由 : " + ret.message)
+                    return;
+                }
+
+                Dialog.alert("チューナをリセットしました。")
+                updateReserve()
+            })
+        }
+
+        sync()
+        {
+            load()
+        }
+
+        removeReserve(e)
+        {
+            e.stopPropagation()
+
+            function remove(id)
+            {
+                Webapi.exec("RemoveReserve", { "id": id }, function (ret)
+                {
+                    if (ret.code != 0)
+                    {
+                        Dialog.alert("予約削除に失敗しました。理由 : " + ret.message)
+                        return
+                    }
+
+                    updateReserve()
+                })
+            }
+
+            var id = e.item.reserve[0]
+            var sql = "select status, auto from reserve where id = " + id
+
+            Webapi.getTable(sql, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("予約の取得に失敗しました。理由 : " + ret.message)
+                    return
+                }
+
+                var status = ret.data1[0][0]
+                var auto = ret.data1[0][1]
+
+                if (auto == -1 || ReserveState.isRecording(status))
+                {
+                    var message = "この予約を削除してもいいですか？"
+
+                    if (ReserveState.isRecording(status))
+                        message += "(録画中です)"
+
+                    Dialog.confirm(message, function ()
+                    {
+                        remove(id)
+                    })
+                }
+                else
+                    remove(id)
+            })
+        }
+
+        action(e)
+        {
+            if (self.editMode)
+            {
+                var id = e.item.reserve[0]
+                var sql = "select status from reserve where id = " + id
+
+                Webapi.getTable(sql, function (ret)
+                {
+                    if (ret.code != 0)
+                    {
+                        Dialog.alert("予約の取得に失敗しました。理由 : " + ret.message)
+                        return
+                    }
+
+                    var status = ret.data1[0][0]
+
+                    if (ReserveState.isRecording(status))
+                        Dialog.alert("録画中のため編集できません。")
+                    else
+                        self.tags["reserve-edit"].show(id)
+                })
+            }
+            else
+                showEventPanel(e)
+        }
+
+        function showEventPanel(e)
+        {
+            var id = e.item.reserve[0]
+            var sql = "select id from event"
+                    + " where fsid = (select fsid from reserve where id = {0})".format(id)
+                    + " and eid = (select eid from reserve where id = {0})".format(id)
+
+            Webapi.getTable(sql, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("予約の取得に失敗しました。理由 : " + ret.message)
+                    return;
+                }
+
+                if (ret.data1.length == 0)
+                {
+                    Dialog.alert("番組情報がありません。")
+                    return
+                }
+
+                var event = ret.data1[0][0]
+                self.tags["event-panel"].show(event)
+            })
+        }
+
+        function load()
+        {
+            //サービス名が必要なのでserviceを結合する
+            //group by reserve.idを入れないとドライバの数だけ重複する
+            var now = Webapi.convertDateTime(new XDate(XDate.now()))
+            var sql = "select reserve.id, title, service.name, start, end, reserve.status, tuner, auto_reserve.name from reserve"
+                    + " left join service on reserve.fsid = service.fsid"
+                    + " left join auto_reserve on reserve.auto = auto_reserve.id"
+                    + " where end > {0} group by reserve.id".format(now)
+                    + " order by start";
+
+            Webapi.getTable(sql, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("予約の取得に失敗しました。理由 : " + ret.message)
+                    return;
+                }
+
+                self.reserves = ret.data1
+
+                self.reserves.forEach(function (reserve)
+                {
+                    var start = Webapi.convertXDate(reserve[3]);
+                    var end = Webapi.convertXDate(reserve[4]);
+
+                    reserve.info = "{0} {1}/{2}/{3}".format(
+                        Util.getTimeString(start, end),
+                        reserve[6],
+                        reserve[2],
+                        reserve[7] == null ? "---" : reserve[7])
+
+                    var status = reserve[5]
+
+                    if (ReserveState.isEnable(status))
+                        reserve.status = ReserveState.isOverlay(status) ? "overlay" : ""
+                    else
+                        reserve.status = "disable"
+                })
+
+                self.update()
+            })
+
+            sql = 'select count(id) from reserve where end > {0}'.format(now)
+
+            Webapi.getTable(sql, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("予約数の取得に失敗しました。理由 : " + ret.message)
+                    return;
+                }
+
+                self.itemCount = ret.data1[0]
+                self.update()
+            })
+        }
+    </script>
+</reserve>

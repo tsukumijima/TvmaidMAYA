@@ -1,0 +1,89 @@
+var MainMenu = {}
+
+<main-menu class="menu" style="{ visible }">
+    <backdrop class="backdrop" onclick="{ hide }">
+        <div class="list">
+            <div>
+                <a href="#live">
+                    <div class="pull-left">
+                        <i class="material-icons">&#xE333;</i>
+                    </div>
+                    <div>ライブ</div>
+                </a>
+            </div>
+            <div>
+                <a href="#epg">
+                    <div class="pull-left">
+                        <i class="material-icons">&#xE871;</i>
+                    </div>
+                    <div>番組表</div>
+                </a>
+            </div>
+            <div>
+                <a href="#reserve">
+                    <div class="pull-left">
+                        <i class="material-icons">&#xE8B5;</i>
+                    </div>
+                    <div>予約</div>
+                </a>
+            </div>
+            <div>
+                <a href="#record">
+                    <div class="pull-left">
+                        <i class="material-icons">&#xE02C;</i>
+                    </div>
+                    <div>録画</div>
+                </a>
+            </div>
+            <div>
+                <a href="#search">
+                    <div class="pull-left">
+                        <i class="material-icons">&#xE8B6;</i>
+                    </div>
+                    <div>番組検索</div>
+                </a>
+            </div>
+            <div>
+                <a href="#auto-reserve">
+                    <div class="pull-left">
+                        <i class="material-icons">&#xE146;</i>
+                    </div>
+                    <div>自動予約</div>
+                </a>
+            </div>
+            <div>
+                <a onclick="SettingPanel.show()">
+                    <div class="pull-left">
+                        <i class="material-icons">&#xE8B8;</i>
+                    </div>
+                    <div>設定</div>
+                </a>
+            </div>
+            <div>
+                <a href="#log">
+                    <div class="pull-left">
+                        <i class="material-icons">&#xE85D;</i>
+                    </div>
+                    <div>ログ</div>
+                </a>
+            </div>
+        </div>
+    </backdrop>
+
+    <script>
+        "use strict"
+
+        var self = this
+
+        MainMenu.show = function ()
+        {
+            self.visible = "display: block;"
+            self.update()
+        }
+
+        hide()
+        {
+            self.visible = ""
+        }
+    </script>
+</main-menu>

@@ -1,0 +1,115 @@
+﻿<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="viewport" content="user-scalable=no, initial-scale=1, maximum-scale=1, minimum-scale=1, width=device-width, height=device-height" />
+    <link rel="stylesheet" href="/material-icons/material-icons.css">
+    <link rel="stylesheet" href="base.css">
+    <link rel="stylesheet" href="theme.css">
+    <link rel="stylesheet" href="genre-tvmaid.css">
+    <link rel="stylesheet" href="genre.css">
+
+    <title>Tvmaid MAYA</title>
+</head>
+<body>
+    <alert></alert>
+    <confirm></confirm>
+    <prompt></prompt>
+    <editor></editor>
+    <checklist-dialog></checklist-dialog>
+
+    <main-menu></main-menu>
+    <setting></setting>
+
+    <live></live>
+    <epg></epg>
+    <reserve></reserve>
+    <record></record>
+    <record-play></record-play>
+    <search></search>
+    <auto-reserve></auto-reserve>
+    <log></log>
+
+    <!-- riot tags -->
+    <script src="parts.tag.html" type="riot/tag">
+    </script>
+    <script src="dialog.tag.html" type="riot/tag">
+    </script>
+
+    <script src="main-menu.tag.html" type="riot/tag">
+    </script>
+    <script src="event-panel.tag.html" type="riot/tag">
+    </script>
+    <script src="reserve-edit.tag.html" type="riot/tag">
+    </script>
+    <script src="auto-reserve-edit.tag.html" type="riot/tag">
+    </script>
+    <script src="record-panel.tag.html" type="riot/tag">
+    </script>
+    <script src="record-play.tag.html" type="riot/tag">
+    </script>
+    <script src="pagetab.tag.html" type="riot/tag">
+    </script>
+    <script src="setting.tag.html" type="riot/tag">
+    </script>
+
+    <script src="live.tag.html" type="riot/tag">
+    </script>
+    <script src="epg.tag.html" type="riot/tag">
+    </script>
+    <script src="reserve.tag.html" type="riot/tag">
+    </script>
+    <script src="record.tag.html" type="riot/tag">
+    </script>
+    <script src="search.tag.html" type="riot/tag">
+    </script>
+    <script src="auto-reserve.tag.html" type="riot/tag">
+    </script>
+    <script src="log.tag.html" type="riot/tag">
+    </script>
+
+    <!-- script -->
+    <script src="/lib/riot+compiler.min.js"></script>
+    <script src="/lib/route.min.js"></script>
+    <script src="/lib/xdate.js"></script>
+    <script src="/lib/jquery.min.js"></script>
+    <script src="/lib/hls.min.js"></script>
+    <script src="jslib.js"></script>
+    <script src="util.js"></script>
+    <script src="webapi.js"></script>
+
+    <script>
+        "use strict"
+
+        riot.compile(function ()
+        {
+            riot.mount('*')
+            route.start(true)
+
+            if (location.hash == "")
+                location.href = "#epg"
+
+            if (localStorage.getItem("epg-hour-hight") == null)
+                localStorage.setItem("epg-hour-hight", 200)
+
+            if (localStorage.getItem("stream-type") == null)
+                localStorage.setItem("stream-type", "pd")
+
+            if (localStorage.getItem("video-mode") == null)
+                localStorage.setItem("video-mode", "low")
+
+            if (localStorage.getItem("hls-ready") == null)
+                localStorage.setItem("hls-ready", "1")
+        })
+
+        function updateReserve()
+        {
+            EpgPage.update()
+            SearchPage.update()
+            ReservePage.update()
+        }
+
+    </script>
+</body>
+</html>

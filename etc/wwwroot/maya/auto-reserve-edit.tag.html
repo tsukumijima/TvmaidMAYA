@@ -1,0 +1,404 @@
+<auto-reserve-edit class="panel" style="{ visible }">
+    <backdrop class="backdrop" onclick="{ hide }">
+        <panel class="right-panel">
+            <header class="header-bar">
+                <div class="pull-left text">自動予約編集</div>
+                <button class="btn pull-right" onclick="{ search }"><i class="material-icons">&#xE8B6;</i></button>
+            </header>
+            <content class="content">
+                <div class="input-list">
+                    <div>検索キーワード</div>
+                    <div>
+                        <input type="text" ref="keyword" onchange="{ onchange }">
+                    </div>
+                    <div>サービス指定</div>
+                    <div>
+                        <div class="select-item" onclick="{ editService }">{ service }</div>
+                    </div>
+                    <div>曜日指定</div>
+                    <div>
+                        <div class="select-item" onclick="{ editWeek }">{ week }</div>
+                    </div>
+                    <div>時間指定(時)</div>
+                    <div>
+                        <div class="select-item" onclick="{ editHour }">{ hour }</div>
+                    </div>
+                    <div>表示名</div>
+                    <div>
+                        <input type="text" ref="name" onchange="{ onchange }">
+                    </div>
+                    <div>フォルダ</div>
+                    <div>
+                        <input type="text" ref="folder" onchange="{ onchange }">
+                    </div>
+                    <div>オプション</div>
+                    <div>
+                        <div class="chk" onclick="{ enableChange }">
+                            <span>有効</span>
+                            <span class="pull-right">
+                                <i class="material-icons">{ enable ? "&#xE834;" : "&#xE835;" }</i>
+                            </span>
+                        </div>
+                    </div>
+                    <div>
+                        <button class="btn primary" onclick="{ save }">保存</button>
+                    </div>
+                </div>
+            </content>
+        </panel>
+    </backdrop>
+
+    <info-menu ref="reserveplan"></info-menu>
+
+    <script>
+        "use strict"
+
+        var self = this
+        var callback
+
+        var autoId = null
+        var services = null
+        var weeks = null
+        var hours = null
+        var modify = null
+        
+        this.on('mount', function ()
+        {
+            initServiceList()
+            initWeekList()
+            initHourList()
+        })
+
+        show(id, _callback)
+        {
+            autoId = id
+            callback = _callback
+            modify = false
+
+            load()
+
+            self.visible = "display: block;"
+            self.update()
+        }
+
+        hide(e)
+        {
+            if (e.target == e.currentTarget)
+            {
+                if (modify)
+                {
+                    Dialog.confirm('変更を保存しますか？', function() 
+                    {
+                        self.save()
+                        self.visible = ""
+                        self.update()
+                    })
+                }
+
+                self.visible = ""
+            }
+        }
+
+        onchange()
+        {
+            modify = true
+        }
+
+        save()
+        {
+            var name = self.refs["name"].value
+            var folder = self.refs["folder"].value
+            var enable = self.enable
+            var opt = getSearchOpt()
+
+            if (name == "")
+            {
+                Dialog.alert("名前を入力してください。")
+                return
+            }
+
+            if (opt.keyword == "")
+            {
+                Dialog.alert("キーワードを入力してください(キーワード無しでは登録できません)。")
+                return
+            }
+
+            var arg = {
+                id: autoId,
+                name: name,
+                folder: folder,
+                status: enable ? 1 : 0,
+                query: opt.toSql(),
+                option: opt.toJson()
+            }
+
+            Webapi.exec("AddAutoReserve", arg, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("保存に失敗しました。\n理由 : " + ret.message)
+                    return
+                }
+
+                modify = false
+                Dialog.alert("保存しました。")
+
+                updateReserve()
+                AutoReservePage.update()
+            })
+        }
+
+        search()
+        {
+            var where = getSearchOpt().toSql()
+            var now = Webapi.convertDateTime(new XDate(XDate.now()))
+            var sql = "select title, name, start, end from event"
+                    + " left join service on event.fsid = service.fsid"
+                    + " where end > {0} and event.id in ({1})".format(now, where)
+                    + " group by event.id"  //別チューナの複数のサービスに番組があるのでまとめる
+                    + " order by event.start limit 51"
+
+            Webapi.getTable(sql, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("録画の取得に失敗しました。理由 : " + ret.message)
+                    return
+                }
+
+                var events = ret.data1
+
+                events.forEach(function (event)
+                {
+                    var start = Webapi.convertXDate(event[2])
+                    var end = Webapi.convertXDate(event[3])
+
+                    var time = "{0} ({1}) {2} ～ {3}".format(
+                        start.toString("M/d"),
+                        Util.getWeekText(start.getDay()),
+                        start.toString("HH:mm"),
+                        end.toString("HH:mm"))
+
+                    event.text = event[0]
+                    event.info = "{0} {1}".format(time, event[1])
+                })
+
+                var count = events.length > 50 ? "50以上" : events.length
+                var message = { text: "予約予定 ({0})".format(count) }
+                events.unshift(message)
+                
+                self.refs.reserveplan.show(events, function (){})
+            })
+        }
+
+        function getSearchOpt()
+        {
+            var opt = new SearchOpt()
+
+            opt.keyword = self.refs["keyword"].value
+
+            opt.fsid = services.filter(function (item)
+            {
+                return item.checked
+
+            }).map(function (item)
+            {
+                return item.fsid
+            })
+
+            opt.week = weeks.filter(function (item)
+            {
+                return item.checked
+
+            }).map(function (item)
+            {
+                return item.num
+            })
+
+            opt.hour = hours.filter(function (item)
+            {
+                return item.checked
+
+            }).map(function (item)
+            {
+                return item.num
+            })
+
+            return opt
+        }
+
+        function initHourList()
+        {
+            hours = []
+
+            for (var i = 0; i < 24; i++)
+            {
+                var hour = {
+                    num: i,
+                    text: i,
+                    checked: false
+                }
+                hours.push(hour)
+            }
+        }
+
+        function initWeekList()
+        {
+            weeks = []
+
+            for (var i = 0; i < 7; i++)
+            {
+                var week = {
+                    num: i,
+                    text: Util.getWeekText(i),
+                    checked: false
+                }
+                weeks.push(week)
+            }
+        }
+
+        function initServiceList()
+        {
+            var sql = "select fsid, name from service group by fsid order by id"
+
+            Webapi.getTable(sql, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("サービスの取得に失敗しました。理由 : " + ret.message)
+                    return
+                }
+
+                services = ret.data1
+
+                services.forEach(function (service)
+                {
+                    service.checked = false
+                    service.fsid = service[0]
+                    service.text = service[1]
+                })
+            })
+        }
+
+        editService()
+        {
+            Dialog.checklist(services, function ()
+            {
+                modify = true
+                self.service = listToText(services)
+                self.update()
+            })
+        }
+
+        editWeek()
+        {
+            Dialog.checklist(weeks, function ()
+            {
+                modify = true
+                self.week = listToText(weeks)
+                self.update()
+            })
+        }
+
+        editHour()
+        {
+            Dialog.checklist(hours, function ()
+            {
+                modify = true
+                self.hour = listToText(hours)
+                self.update()
+            })
+        }
+
+        enableChange(e)
+        {
+            modify = true
+            self.enable = !self.enable
+        }
+
+        function listToText(list, convert)
+        {
+            if (list == null)
+                return "指定なし"
+
+            var texts = list.filter(function (item)
+            {
+                return item.checked
+
+            }).map(function (item)
+            {
+                return item.text
+            })
+
+            return texts.length == 0 ? "指定なし" : texts.join(", ")
+        }
+        
+        function load()
+        {
+            var sql = "select name, folder, status, option from auto_reserve where id = " + autoId;
+
+            Webapi.getTable(sql, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("自動予約の取得に失敗しました。理由 : " + ret.message)
+                    return
+                }
+
+                var auto = ret.data1[0]
+                
+                self.refs["name"].value = auto[0]
+                self.refs["folder"].value = auto[1]
+                self.enable = auto[2] == "1"
+
+                var opt = SearchOpt.fromJson(auto[3])
+                loadSearchData(opt)
+
+                self.service = listToText(services)
+                self.week = listToText(weeks)
+                self.hour = listToText(hours)
+                
+                self.update()
+            })
+        }
+
+        function loadSearchData(opt)
+        {
+            self.refs["keyword"].value = opt.keyword
+
+            if (opt.fsid == null)
+                opt.fsid = []
+
+            services.forEach(function (service)
+            {
+                service.checked = opt.fsid.some(function (v)
+                {
+                    return service.fsid == v
+                })
+            })
+
+            if (opt.hour == null)
+                opt.hour = []
+
+            hours.forEach(function (hour)
+            {
+                hour.checked = opt.hour.some(function (v)
+                {
+                    return hour.num == v
+                })
+            })
+
+            if (opt.week == null)
+                opt.week = []
+
+            weeks.forEach(function (week)
+            {
+                week.checked = opt.week.some(function (v)
+                {
+                    return week.num == v
+                })
+            })
+        }
+    </script>
+</auto-reserve-edit>
+

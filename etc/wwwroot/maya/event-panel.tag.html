@@ -1,0 +1,269 @@
+<event-panel class="panel" style="{ visible }">
+    <backdrop class="backdrop" onclick="{ hide }">
+        <panel class="right-panel">
+            <header class="header-bar">
+                <button class="btn pull-right" onclick="{ websearch }"><i class="material-icons">&#xE894;</i></button>
+            </header>
+
+            <content class="content" ref="content">
+                <div id="info">
+                    <div>
+                        <h4>{ title }</h4>
+                        <div>{ time }</div>
+                        <div>{ service }</div>
+                        <div>{ reserve }</div>
+                        <button show="{ reserveStatus == 'none' }" class="btn primary" onclick="{ addReserve }">予約</button>
+                        <button show="{ reserveStatus == 'enable' }" class="btn reserve-enable" onclick="{ removeReserve }">予約中</button>
+                        <button show="{ reserveStatus == 'disable' }" class="btn reserve-disable" onclick="{ enableReserve }">予約無効</button>
+                        <button show="{ reserveStatus == 'overlay' }" class="btn reserve-overlay" onclick="{ removeReserve }">予約重複</button>
+                    </div>
+                    <hr>
+                    <div>
+                        <div>
+                            <div ref="desc" />
+                            <br>
+                        </div>
+                        <div>
+                            <div ref="longdesc" />
+                            <br>
+                        </div>
+                        <div>
+                            <div ref="genreText" />
+                            <br>
+                        </div>
+                        <div>{ pay }</div>
+                    </div>
+                </div>
+            </content>
+        </panel>
+    </backdrop>
+
+    <style>
+        .content
+        {
+            -webkit-user-select: text;
+            -moz-user-select: text;
+            -ms-user-select: text;
+            user-select: text;
+        }
+
+        #info
+        {
+            padding: 1.5em 0em;
+        }
+
+            #info > div
+            {
+                padding-left: 1.5em;
+                padding-right: 1.5em;
+            }
+
+            #info button
+            {
+                margin-top: 5px;
+                min-width: 100px;
+                min-height: 30px;
+            }
+
+        .reserve-enable
+        {
+            background-color: tomato;
+            color: white;
+        }
+
+        .reserve-disable
+        {
+            background-color: lightgray;
+        }
+
+        .reserve-overlay
+        {
+            background-color: yellow;
+        }
+    </style>
+
+    <script>
+        "use strict"
+
+        var self = this
+        var eventId = null
+
+        hide(e)
+        {
+            if (e.target == e.currentTarget)
+                self.visible = ""
+        }
+
+        websearch()
+        {
+            window.open(Util.getWebSearchLink(self.title), '_blank')
+        }
+
+        enableReserve()
+        {
+            getReserve(function (id, status)
+            {
+                status &= 254   //有効フラグをいったん削除
+                status += 1     //追加
+
+                Webapi.exec("AddReserve", { id: id, status: status }, function (ret)
+                {
+                    if (ret.code != 0)
+                    {
+                        Dialog.alert("予約の編集に失敗しました。理由 : " + ret.message)
+                        return
+                    }
+
+                    setReserveButton()
+                    updateReserve()
+                })
+            })
+        }
+
+        removeReserve()
+        {
+            getReserve(function (id, status)
+            {
+                var remove = function (id)
+                {
+                    Webapi.exec("RemoveReserve", { "id": id }, function (ret)
+                    {
+                        if (ret.code != 0)
+                        {
+                            Dialog.alert("予約削除に失敗しました。理由 : " + ret.message)
+                            return
+                        }
+
+                        setReserveButton()
+                        updateReserve()
+                    })
+                }
+
+                if (ReserveState.isRecording(status))
+                {
+                    var message = "削除してもいいですか？(録画中です)"
+
+                    Dialog.confirm(message, function ()
+                    {
+                        remove(id)
+                    })
+                }
+                else
+                    remove(id)
+            })
+        }
+
+        addReserve()
+        {
+            var sql = "select fsid, eid from event where id = " + eventId
+
+            Webapi.getTable(sql, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("番組の取得に失敗しました。理由 : " + ret.message)
+                    return
+                }
+
+                var fsid = ret.data1[0][0]
+                var eid = ret.data1[0][1]
+
+                Webapi.exec("AddReserve", { fsid: fsid, eid: eid }, function (ret)
+                {
+                    if (ret.code != 0)
+                    {
+                        Dialog.alert("予約に失敗しました。理由 : " + ret.message)
+                        return
+                    }
+
+                    setReserveButton()
+                    updateReserve()
+                })
+            })
+        }
+
+        function setReserveButton()
+        {
+            getReserve(function (id, status)
+            {
+                if (id == null)
+                    self.reserveStatus = "none"
+                else
+                {
+                    if (ReserveState.isEnable(status))
+                        self.reserveStatus = ReserveState.isOverlay(status) ? "overlay" : "enable"
+                    else
+                        self.reserveStatus = "disable"
+                }
+
+                self.update()
+            })
+        }
+
+        function getReserve(callback)
+        {
+            var sql = "select reserve.id, status from reserve"
+                    + " left join event on reserve.fsid = event.fsid and reserve.eid = event.eid"
+                    + " where event.id = " + eventId
+
+            Webapi.getTable(sql, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("予約の取得に失敗しました。理由 : " + ret.message)
+                    return
+                }
+
+                if (ret.data1.length == 0)
+                    callback(null, null)
+                else
+                {
+                    var id = ret.data1[0][0]
+                    var status = ret.data1[0][1]
+
+                    callback(id, status)
+                }
+            })
+        }
+
+        show(id)
+        {
+            eventId = id
+
+            var sql = "select event.id, service.name, start, end, title, desc, longdesc, genre_text, pay from event"
+                    + " left join service on event.fsid = service.fsid"
+                    + " where event.id = " + eventId
+
+            Webapi.getTable(sql, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("番組の取得に失敗しました。理由 : " + ret.message)
+                    return
+                }
+
+                var event = ret.data1[0]
+
+                self.service = event[1]
+                var start = Webapi.convertXDate(event[2])
+                var end = Webapi.convertXDate(event[3])
+
+                self.time = Util.getTimeString(start, end)
+                self.title = event[4]
+
+                self.refs.desc.innerHTML = event[5].htmlText()
+                self.refs.longdesc.innerHTML = event[6].htmlText()
+                self.refs.genreText.innerHTML = event[7].htmlText2()
+
+                self.pay = event[8] == 1 ? "有料番組" : "無料番組"
+
+                setReserveButton()
+
+                self.visible = "display: block;"
+                self.update()
+
+                self.refs["content"].scrollTop = 0
+            })
+        }
+    </script>
+</event-panel>

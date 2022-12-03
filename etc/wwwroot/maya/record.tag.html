@@ -1,0 +1,262 @@
+var RecordPage = {}
+
+<record show="{ visible }">
+    <header class="header-bar">
+        <button class="btn pull-left" onclick="MainMenu.show()"><i class="material-icons">&#xE5D2;</i></button>
+        <div class="text pull-left">録画 ({ itemCount })</div>
+        <button onclick="{ search }" class="btn pull-right"><i class="material-icons">&#xE8B6;</i></button>
+        <input type="search" class="pull-right" placeholder="録画を検索..." value="{ keyword }" ref="keyword-input" onkeyup="{ watchKey }">
+        <button onclick="{ searchHistory }" class="btn pull-right"><i class="material-icons">&#xE5C5;</i></button>
+    </header>
+
+    <content class="main-content" ref="content" onscroll="{ onscroll }">
+        <div style="{ scrollHeight }">
+            <div class="ilist" style="{ listTop }">
+                <div each="{ record in records }"
+                     class="{ error: record[5] != 0 } { offline: (record[6] & 1) == 1 }"
+                     onclick="{ showRecordPanel }"
+                     no-reorder>
+                    <div>
+                        <div>{ record[1] }</div>
+                        <div class='info'>{ record.info }</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </content>
+
+    <pagetab></pagetab>
+    <record-panel></record-panel>
+    <text-menu ref="historyselect"></text-menu>
+
+    <style>
+        .ilist
+        {
+            position: absolute;
+            background-color: white;
+            width: 100%;
+        }
+
+            .ilist .error
+            {
+                background-color: yellow;
+            }
+
+            .ilist .offline
+            {
+                background-color: lightgray;
+            }
+
+        input[type="search"]
+        {
+            height: 24px;
+            margin: 8px 0;
+            width: 150px;
+        }
+
+            input[type="search"]:focus
+            {
+                border-bottom-width: 0px;
+            }
+    </style>
+
+    <script>
+        "use strict"
+
+        var self = this
+        var router = route.create()
+
+        var limit = 30
+        var itemHeight = 80
+        var contentTop = 0
+        var viewMode
+
+        RecordPage = {
+            update: function ()
+            {
+                load("noscroll")
+            }
+        }
+
+        this.on("mount", function ()
+        {
+            self.keyword = ""
+        })
+
+        router('record?..', function ()
+        {
+            var keyword = route.query().keyword
+
+            keyword = keyword == null ? "" : decodeURIComponent(keyword)
+            self.visible = true
+
+            //読み込みの必要なし
+            if (self.records != null && keyword == self.keyword)
+                self.update()
+            else
+            {
+                self.keyword = keyword
+                load()
+            }
+        })
+
+        router('record', function ()
+        {
+            self.visible = true
+
+            if (self.records != null)
+            {
+                self.update()
+                history.replaceState(null, null, "#record?keyword=" + encodeURIComponent(self.keyword))
+            }
+            else
+            {
+                self.keyword = ""
+                load()
+            }
+        })
+        
+        router('..', function ()
+        {
+            self.visible = false
+            self.update()
+        })
+
+        watchKey(e)
+        {
+            if (e.which == 13)
+                this.search()
+        }
+
+        searchHistory()
+        {
+            var hist = KeywordHistoy.getList()
+            var list = []
+
+            hist.forEach(function (item)
+            {
+                list.push({ text: item })
+            })
+
+            if (list.length == 0)
+            {
+                Dialog.alert("履歴はありません。")
+                return
+            }
+
+            self.refs.historyselect.show(list, function (item)
+            {
+                routing(item.text)
+            })
+        }
+
+        function routing(keyword)
+        {
+            router("record?keyword={0}&{1}".format(
+                keyword == null ? self.keyword : encodeURIComponent(keyword),
+                XDate.now()))
+        }
+
+        search()
+        {
+            var keyword = self.refs["keyword-input"].value
+            KeywordHistoy.save(keyword)
+            self.records = null
+            routing(keyword)
+        }
+
+        showRecordPanel(e)
+        {
+            var id = e.item.record[0]
+            self.tags["record-panel"].show(id)
+        }
+
+        function load(noscroll)
+        {
+            viewMode = localStorage.getItem("record/view")
+
+            var opt = new SearchOpt()
+            var sql = 'select count(id) from record where {0} {1}'.format(
+                opt.keywordToSql(self.keyword),
+                viewMode == 1 ? " and status & 1 = 0" : "")
+
+            Webapi.getTable(sql, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("録画数の取得に失敗しました。理由 : " + ret.message)
+                    return
+                }
+
+                self.itemCount = ret.data1[0]
+                self.scrollHeight = "height:{0}px".format(itemHeight * self.itemCount)
+
+                self.update()
+                loadEvent()
+
+                if (noscroll == null)
+                    self.refs["content"].scrollTop = 0
+            })
+        }
+
+        function updateEvent(force)
+        {
+            var content = self.refs["content"]
+
+            if (force || Math.abs(contentTop - content.scrollTop) > itemHeight * 10)
+            {
+                //表示されている時だけscrollTopを取得(0になるため)
+                if (self.visible)
+                    contentTop = content.scrollTop
+
+                loadEvent()
+            }
+        }
+
+        //スクロールイベントを間引く
+        var onscroll2 = debounce(updateEvent, 300)
+
+        onscroll()
+        {
+            onscroll2()
+        }
+
+        function loadEvent()
+        {
+            var contentHeight = self.refs["content"].clientHeight
+            var offset = Math.floor(contentTop / itemHeight) - 10
+            if (offset < 0)
+                offset = 0
+
+            var opt = new SearchOpt()
+            var where = "" + opt.keywordToSql(self.keyword)
+            var sql = "select id, title, service, start, end, code, status from record"
+                    + " where {0} {1}".format(opt.keywordToSql(self.keyword), viewMode == 1 ? " and status & 1 = 0" : "")
+                    + " order by end desc limit {0} offset {1}".format(limit, offset);
+
+            Webapi.getTable(sql, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("録画の取得に失敗しました。理由 : " + ret.message)
+                    return
+                }
+
+                self.records = ret.data1
+                self.listTop = "top:{0}px;".format(Math.floor(itemHeight * offset))
+
+                self.records.forEach(function (record)
+                {
+                    var start = Webapi.convertXDate(record[3]);
+                    var end = Webapi.convertXDate(record[4]);
+
+                    record.info = "{0} {1}".format(
+                        Util.getTimeString(start, end),
+                        record[2])
+                })
+
+                self.update()
+            })
+        }
+    </script>
+</record>

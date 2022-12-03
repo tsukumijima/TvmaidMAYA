@@ -1,0 +1,70 @@
+
+.news
+{
+    background-color: rgb(255, 255, 224);
+}
+
+.sports
+{
+    background-color: rgb(224, 224, 255);
+}
+
+.infomation
+{
+    background-color: rgb(255, 224, 240);
+}
+
+.dorama
+{
+    background-color: rgb(255, 224, 224);
+}
+
+.music
+{
+    background-color: rgb(224, 255, 224);
+}
+
+.variety
+{
+    background-color: rgb(224, 255, 255);
+}
+
+.movie
+{
+    background-color: rgb(255, 240, 224);
+}
+
+.anime
+{
+    background-color: rgb(255, 224, 255);
+}
+
+.documentary
+{
+    background-color: rgb(255, 255, 224);
+}
+
+.performance
+{
+    background-color: rgb(255, 240, 224);
+}
+
+.education
+{
+    background-color: rgb(224, 240, 255);
+}
+
+.welfare
+{
+    background-color: rgb(224, 240, 255);
+}
+
+.genre-etc
+{
+    background-color: rgb(240, 240, 240);
+}
+
+.genre-none
+{
+    background-color: rgb(240, 240, 240);
+}

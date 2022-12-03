@@ -1,0 +1,13 @@
+tvtest=
+record.folder=
+record.margin.start=10
+record.margin.end=10
+record.file={title}-{start-yy}{start-MM}{start-dd}-{start-hh}{start-mm}.ts
+epg.hour=9
+url=http://+:20001/
+autosleep=off
+postprocess=
+epgurl=http://localhost:20001/maya/index.html
+epg.basic=4,6,7
+chat.niconico.mail=
+chat.niconico.password=

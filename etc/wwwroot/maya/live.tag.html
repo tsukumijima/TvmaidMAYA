@@ -1,0 +1,554 @@
+﻿<live show="{ visible }" class="{ fullwindow: fullwindow }">
+    <header class="header-bar">
+        <button class="btn pull-left" onclick="MainMenu.show()"><i class="material-icons">&#xE5D2;</i></button>
+        <button class="btn pull-left" onclick="{ showTunerMenu }">{ tuner }</button>
+        <button class="btn pull-left" onclick="{ selectService }">{ service }</button>
+        <button class="btn pull-right" onclick="{ playToggle }"><i class="material-icons">{ playIcon ? "&#xE037;" : "&#xE047;" }</i></button>
+        <button class="btn pull-right" onclick="{ changeChatMode }"><i class="material-icons">{ chatMode ? "&#xE0B7;" : "&#xE0CA;"  }</i></button>
+    </header>
+
+    <content class="video-content">
+        <video preload="none"
+               playsinline
+               onplay="{ onplay }"
+               onpause="{ onpause }"
+               onprogress="{ onprogress }"
+               onloadstart="{ onload }"
+               onerror="{ onerror }"
+               onstalled="{ onwait }"
+               ref="video" />
+        <div id="video-state">{ videoState }</div>
+    </content>
+
+    <div id="chat-window-parent">
+        <canvas ref="chat-window"></canvas>
+    </div>
+
+    <div id="screen-button">
+        <div onclick="{ showTunerMenu }"></div>
+        <div onclick="{ setFullwindow }"></div>
+        <div onclick="{ selectService }"></div>
+    </div>
+
+    <pagetab></pagetab>
+    <live-service-panel></live-service-panel>
+    <tuner-menu></tuner-menu>
+
+    <style>
+        #video-state
+        {
+            position: absolute;
+            right: 12px;
+            top: 50px;
+            color: white;
+            background-color: rgba(0, 0, 0, .5);
+        }
+
+        #chat-window-parent
+        {
+            position: absolute;
+            top: 50px;
+            left: 0;
+            right: 0;
+            bottom: 50px;
+            overflow: hidden;
+        }
+
+        #screen-button
+        {
+            width: 100%;
+            height: 100%;
+            display: -webkit-flex;
+            display: flex;
+        }
+
+            #screen-button div
+            {
+                z-index: 10;
+                height: 100%;
+                width: -webkit-calc(100% - 160px);
+                width: calc(100% - 160px);
+            }
+
+                #screen-button div:first-child,
+                #screen-button div:last-child
+                {
+                    width: 80px;
+                }
+
+                    #screen-button div:first-child:active,
+                    #screen-button div:last-child:active
+                    {
+                        background-color: rgba(128, 128, 128, .5) !important;
+                    }
+
+        :scope > .header-bar,
+        :scope > pagetab
+        {
+            background-color: rgba(0, 0, 0, .2);
+        }
+
+        :scope.fullwindow > .header-bar,
+        :scope.fullwindow > pagetab
+        {
+            display: none;
+        }
+    </style>
+
+    <script>
+        "use strict"
+
+        var self = this
+        var router = route.create()
+
+        var tuner
+        var fsid
+
+        var video
+        var loaded = false  //video.srcが有効かどうか
+
+        var streamType
+        var streamId = XDate.now()
+        var hlsjs
+
+        var chatOpened = false
+        var chatWindow = new ChatWindow() 
+
+        this.on("mount", function ()
+        {
+            video = self.refs["video"]
+            self.playIcon = true    //true: play_arrow, false: stop
+
+            self.chatMode = localStorage.getItem("live/chat-mode") == 1
+
+            tuner = localStorage.getItem("live/tuner")
+            fsid = localStorage.getItem("live/fsid")
+
+            self.tuner = tuner == null ? "[チューナ]" : tuner
+
+            if (fsid == null)
+                self.service = "[サービス]"
+            else
+                getServiceName(fsid)
+
+            self.update()
+        })
+
+        router('live', function ()
+        {
+            self.visible = true
+            self.update()
+        })
+
+        router('..', function ()
+        {
+            self.visible = false
+            self.update()
+        })
+
+        function getServiceName(fsid)
+        {
+            var sql = "select name from service where fsid = " + fsid
+
+            Webapi.getTable(sql, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("サービスの取得に失敗しました。理由 : " + ret.message)
+                    return
+                }
+
+                self.service = ret.data1[0][0]
+                self.update()
+            })
+        }
+
+        changeChatMode()
+        {
+            self.chatMode = !self.chatMode
+            localStorage.setItem("live/chat-mode", self.chatMode ? 1 : 0)
+
+            startChat()
+        }
+
+        showTunerMenu()
+        {
+            self.tags["tuner-menu"].show(function (tuner)
+            {
+                showServicePanel(tuner)
+            })
+        }
+
+        setFullwindow()
+        {
+            self.fullwindow = !self.fullwindow
+        }
+
+        selectService()
+        {
+            showServicePanel(tuner)
+        }
+
+        function showServicePanel(tuner)
+        {
+            if (tuner != null)
+                self.tags["live-service-panel"].show(tuner, function (fsid)
+                {
+                    setService(tuner, fsid)
+                })
+            else
+                self.showTunerMenu()
+        }
+
+        function setService(_tuner, _fsid)
+        {
+            tuner = _tuner
+            fsid = _fsid
+
+            self.tuner = tuner
+            getServiceName(fsid)
+            stop()
+            play()
+            
+            localStorage.setItem("live/tuner", tuner)
+            localStorage.setItem("live/fsid", fsid)
+        }
+
+        onplay()
+        {
+            self.playIcon = false  //stop
+            startChat()
+        }
+
+        onpause()
+        {
+            self.playIcon = true  //play_arrow
+        }
+
+        onwait()
+        {
+            self.videoState = "Waiting..."
+        }
+
+        onload()
+        {
+            if (loaded)
+                self.videoState = "Loading..."
+        }
+
+        onerror()
+        {
+            if (loaded == false)
+                return
+
+            var error = {
+                1: "中断されました。",
+                2: "ネットワークでエラーが発生しました。",
+                3: "再生できないデータです。",
+                4: "ストリーミング方式の設定が間違っているか、録画中などの理由により再生に失敗しました。"
+            }
+
+            var message = error[video.error.code]
+            Dialog.alert(message == null ? "不明なエラーです。" : message, "");
+        }
+
+        onprogress()
+        {
+            self.videoState = ""
+        }
+
+        function stop()
+        {
+            chatOpened = false
+
+            if (loaded == false)
+                return
+
+            loaded = false
+
+            if (video.paused == false)
+                video.pause()
+
+            video.src = ""
+
+            if (streamType == "hls" || streamType == "hls emu")
+                Webapi.exec("StopHls", { stream: streamId }, function (ret) { })
+
+            if (streamType == "hls emu")
+                stopHlsEmu()
+
+            self.onpause()
+        }
+
+        playToggle()
+        {
+            if (tuner == null || fsid == null)
+                return
+
+            if (loaded && video.paused == false)
+                stop()
+            else
+                play()
+        }
+
+        function playHlsEmu(url)
+        {
+            hlsjs = new Hls({ manifestLoadingTimeOut: 20000, manifestLoadingMaxRetry: 3, maxMaxBufferLength: 10 })
+            hlsjs.on(Hls.Events.MEDIA_ATTACHED, function ()
+            {
+                hlsjs.on(Hls.Events.MANIFEST_PARSED, function ()
+                {
+					video.play()
+                    loaded = true
+				})
+                hlsjs.loadSource(url)
+            })
+            hlsjs.attachMedia(video)
+        }
+
+        function stopHlsEmu()
+        {
+            if (hlsjs != null)
+            {
+                hlsjs.detachMedia()
+                hlsjs.destroy()
+                hlsjs = null
+            }        
+        }
+
+        function play()
+        {
+            streamType = localStorage.getItem("stream-type")
+            self.mode = localStorage.getItem("video-mode")
+            var ready = localStorage.getItem("hls-ready")
+
+            if (loaded)
+            {
+                video.play()
+                return
+            }
+
+            video.load()    //モバイルブラウザ対策
+
+            if (streamType == "hls" || streamType == "hls emu")
+            {
+                self.videoState = "Starting..."
+
+                Webapi.exec("StartHls", { stream: streamId, type: "live", tuner: tuner, fsid: fsid, mode: self.mode, ready: ready }, function (ret)
+                {
+                    if (streamType == "hls")
+                    {
+                        video.src = "/hls-playlist/stream.m3u8?stream=" + streamId
+                        video.load()
+                        video.play()
+                        loaded = true
+                    }
+                    else
+                    {
+                        stopHlsEmu()
+                        playHlsEmu("/hls-playlist/stream.m3u8?stream=" + streamId)
+                    }
+                })
+            }
+            else
+            {
+                video.src = "/live-stream/stream?tuner={0}&fsid={1}&mode={2}".format(encodeURIComponent(tuner), fsid, self.mode)
+                video.load()
+                video.play()
+                loaded = true
+            }
+        }
+
+        window.addEventListener('resize', function ()
+        {
+            if (loaded && video.paused == false && self.chatMode)
+                chatWindow.init(self.refs["chat-window"])
+        })
+
+        function startChat()
+        {
+            if (self.chatMode == false)
+                return
+
+            if (chatOpened)
+            {
+                getChat(true)
+                return
+            }
+
+            self.chats = []
+
+            Webapi.exec("OpenChatServer", { type: 1, id: streamId, fsid: fsid }, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("コメントサーバに接続できません。" + ret.message)
+                    return
+                }
+
+                chatOpened = true
+                getChat(true)
+            })
+        }
+
+        function getChat(init)
+        {
+            if (loaded == false || video.paused || self.chatMode == false)
+            {
+                chatWindow.stop()
+                return
+            }
+
+            if (init)
+                chatWindow.init(self.refs["chat-window"], true)
+
+            Webapi.exec("GetChat", { id: streamId, time: 0, max: (init ? 0 : 100) }, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("コメントが取得できません。" + ret.message)
+                    return
+                }
+
+                chatWindow.add(ret.data1)
+                setTimeout(getChat, 5000)
+            })
+        }
+    </script>
+</live>
+
+<tuner-menu class="menu" style="{ visible }">
+    <backdrop class="backdrop" onclick="{ hide }">
+        <div class="list">
+            <div each="{ tuner in tuners }" onclick="{ selected }" no-reorder>
+                <span>{ tuner[0] }</span>
+                <span class="pull-right">{ tuner.state }</span>
+            </div>
+        </div>
+    </backdrop>
+
+    <script>
+        "use strict"
+
+        var self = this
+        var callback
+
+        selected(e)
+        {
+            callback(e.item.tuner[0])
+        }
+
+        show(_callback)
+        {
+            callback = _callback
+            var sql = "select name from tuner order by id"
+
+            Webapi.exec("GetTunersState", function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("チューナの取得に失敗しました。理由 : " + ret.message, "")
+                    return
+                }
+
+                self.tuners = ret.data1
+
+                var status = {
+                    "0": "視聴中",
+                    "1": "録画中",
+                    "2": "録画一時停止中",
+                    "3": "",
+                    "4": "不明",
+                    "5": "番組表更新中"
+                }
+
+                self.tuners.forEach(function (tuner)
+                {
+                    tuner.state = status[tuner[1]]
+                })
+
+                self.visible = "display: block;"
+                self.update()
+            })
+        }
+
+        hide()
+        {
+            self.visible = ""
+        }
+    </script>
+</tuner-menu>
+
+<live-service-panel class="panel" style="{ visible }">
+    <backdrop class="backdrop" onclick="{ hide }">
+        <panel class="right-panel">
+            <header class="header-bar">
+                <div class="text pull-left">{ tuner }</div>
+            </header>
+
+            <div class="content">
+                <div class="ilist">
+                    <div each="{ service in services }" onclick="{ selectService }" no-reorder>
+                        <div>
+                            <div>{ service[1] }</div>
+                            <div class="info">{ service[2] }</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </panel>
+    </backdrop>
+
+    <style>
+        .right-panel
+        {
+            width: 400px;
+        }
+    </style>
+
+    <script>
+        "use strict"
+
+        var self = this
+        var callback
+
+        selectService(e)
+        {
+            var service = e.item.service
+            callback(service[0])
+            self.hide()
+        }
+
+        hide()
+        {
+            self.visible = ""
+        }
+
+        show(tuner, _callback)
+        {
+            callback = _callback
+            self.tuner = tuner
+            self.visible = "display: block;"
+
+            var now = Webapi.convertDateTime(new XDate(XDate.now()))
+
+            var sql = "select service.fsid, name, title from service left join"
+                    + " (select id, fsid, title from event where start < {0} and end > {0}) as _event".format(now)
+                    + " on service.fsid = _event.fsid"
+                    + " where driver = (select driver from tuner where name = '{0}')".format(Webapi.sqlEncode(tuner))
+                    + " order by service.id"
+
+            Webapi.getTable(sql, function (ret)
+            {
+                if (ret.code != 0)
+                {
+                    Dialog.alert("サービスの取得に失敗しました。理由 : " + ret.message)
+                    return
+                }
+
+                self.services = ret.data1
+                self.update()
+            })
+        }
+    </script>
+</live-service-panel>
