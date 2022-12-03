@@ -38,7 +38,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="DynamicJson">
-      <HintPath>H:\project\TvmaidMAYA\lib\DynamicJson.dll</HintPath>
+      <HintPath>..\lib\DynamicJson.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />

@@ -61,14 +61,14 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="DynamicJson">
-      <HintPath>H:\project\TvmaidMAYA\lib\DynamicJson.dll</HintPath>
+      <HintPath>..\lib\DynamicJson.dll</HintPath>
     </Reference>
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="Microsoft.VisualBasic" />
     <Reference Include="System" />
     <Reference Include="System.Data" />
     <Reference Include="System.Data.SQLite">
-      <HintPath>H:\project\TvmaidMAYA\lib\System.Data.SQLite.dll</HintPath>
+      <HintPath>..\lib\System.Data.SQLite.dll</HintPath>
     </Reference>
     <Reference Include="System.Deployment" />
     <Reference Include="System.Drawing" />
