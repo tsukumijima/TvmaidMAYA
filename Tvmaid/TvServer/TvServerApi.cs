@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Threading;
 
 namespace Tvmaid
 {
@@ -20,6 +19,12 @@ namespace Tvmaid
         public void Close()
         {
             Call(Api.Close);
+        }
+
+        public bool IsEpgComplete(int nid, int tsid)
+        {
+            var arg = "{0}\x1{1}\x0".Formatex(nid, tsid);
+            return Call(Api.IsEpgComplete, arg) == "1";
         }
 
         public int GetState()

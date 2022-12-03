@@ -175,9 +175,8 @@ var RecordPage = {}
         {
             viewMode = localStorage.getItem("record/view")
 
-            var opt = new SearchOpt()
             var sql = 'select count(id) from record where {0} {1}'.format(
-                opt.keywordToSql(self.keyword),
+                keywordToSql(self.keyword),
                 viewMode == 1 ? " and status & 1 = 0" : "")
 
             Webapi.getTable(sql, function (ret)
@@ -228,10 +227,9 @@ var RecordPage = {}
             if (offset < 0)
                 offset = 0
 
-            var opt = new SearchOpt()
-            var where = "" + opt.keywordToSql(self.keyword)
+            var where = "" + keywordToSql(self.keyword)
             var sql = "select id, title, service, start, end, code, status from record"
-                    + " where {0} {1}".format(opt.keywordToSql(self.keyword), viewMode == 1 ? " and status & 1 = 0" : "")
+                    + " where {0} {1}".format(keywordToSql(self.keyword), viewMode == 1 ? " and status & 1 = 0" : "")
                     + " order by end desc limit {0} offset {1}".format(limit, offset);
 
             Webapi.getTable(sql, function (ret)
@@ -257,6 +255,41 @@ var RecordPage = {}
 
                 self.update()
             })
+        }
+
+        function keywordToSql(keyword)
+        {
+            keyword = keyword == null ? "" : keyword
+
+            var words = keyword.split(/ |　/g);	//スペースで区切る(全角OK)
+            var sql = ""
+
+            words.forEach(function (word)
+            {
+                if (word == "" || word == "-" || word == "+")
+                    return
+
+                var sw = word.charAt(0);
+
+                if (sw == "-")
+                {
+                    if (sql != "") sql += " and ";
+                    sql += "not ";
+                    word = word.substr(1, word.length - 1);
+                }
+                else if (sw == "+")
+                {
+                    if (sql != "") sql += " or ";
+                    word = word.substr(1, word.length - 1);
+                }
+                else
+                    if (sql != "") sql += " and ";
+
+                sql += "(title||desc||longdesc||genre_text) like '%{0}%' escape '^'".format(Webapi.sqlLikeEncode(word));
+                sql = "(" + sql + ")";  //and、orの優先順位を無くす
+            })
+
+            return sql == "" ? "1" : sql;
         }
     </script>
 </record>

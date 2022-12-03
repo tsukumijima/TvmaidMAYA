@@ -245,13 +245,11 @@ namespace Tvmaid
     //ジャンルID→テキストコンバータ
     class GenreConverter
     {
-        Dictionary<int, string> genres1 = new Dictionary<int, string>();
-        Dictionary<int, string> genres2 = new Dictionary<int, string>();
+        Dictionary<int, string> genres = new Dictionary<int, string>();
         
         public void Load()
         {
-            LoadFile(genres1, "genre1.def");
-            LoadFile(genres2, "genre2.def");
+            LoadFile(genres, "genre.def");
         }
 
         public void LoadFile(Dictionary<int, string> dic, string file)
@@ -270,20 +268,14 @@ namespace Tvmaid
         {
             var text = "";
 
-            for (var i = 0; i < 4; i++)
+            for (var i = 0; i < 6; i++)
             {
-                var genre = (int)((data >> (i * 8)) & 0xff);
+                var code = (int)((data >> (i * 8)) & 0xff);
 
-                if (genre == 0xff) continue;
-
-                if (genres1.ContainsKey(genre >> 4))
+                if (genres.ContainsKey(code))
                 {
-                    var level1 = genres1[genre >> 4];
-
-                    if (genres2.ContainsKey(genre))
-                        text += level1 + "/" + genres2[genre] + "\n";
-                    else
-                        text += level1 + "/\n";
+                    if (genres.ContainsKey(code))
+                        text += genres[code] + "\n";
                 }
             }
 

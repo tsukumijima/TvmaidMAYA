@@ -115,35 +115,16 @@ var AutoReservePage = {}
         {
             Dialog.editor("キーワードを入力してください。", function (text)
             {
-                var words = text.split("\n");
-
-                //重複削除
-                words = words.filter(function (x, i, s)
+                var exec = function (words, index)
                 {
-                    return s.indexOf(x) == i;
-                })
-
-                var count = words.length
-                var counter = {
-                    dec: function ()
+                    if (words.length == index)
                     {
-                        count--
-                        if (count == 0)
-                        {
-                            load()
-                            updateReserve()
-                        }
-                    }
-                }
-
-                words.forEach(function (word)
-                {
-                    if (word == "")
-                    {
-                        counter.dec()
+                        load()
+                        updateReserve()
                         return
                     }
 
+                    var word = words[index]
                     var opt = new SearchOpt(word)
 
                     var arg = {
@@ -156,12 +137,21 @@ var AutoReservePage = {}
 
                     Webapi.exec("AddAutoReserve", arg, function (ret)
                     {
-                        if (ret.code != 0)
-                            Dialog.alert("追加に失敗しました。{0}\n理由 : {1}".format(word, ret.message))
-
-                        counter.dec()
+                        index++
+                        if (ret.code == 0)
+                            setTimeout(exec, 0, words, index)
+                        else
+                            Dialog.alert("追加に失敗しました。{0}\n理由 : {1}".format(word, ret.message), function ()
+                            {
+                                setTimeout(exec, 0, words, index)
+                            })
                     })
-                })
+                }
+
+                var words = text.split("\n");
+                words = words.filter(function (x, i, s) { return x != "" })   //空文字列削除
+                words = words.filter(function (x, i, s) { return s.indexOf(x) == i })   //重複削除
+                exec(words, 0)
             })
         }
 
@@ -178,19 +168,32 @@ var AutoReservePage = {}
                 if (folder == self.folder)
                     return
 
-                selectForEach(function (auto, counter)
+                var autos = self.autos.filter(function (auto) { return auto.checked })
+
+                var exec = function (index)
                 {
-                    var id = auto[0]
+                    if (autos.length == index)
+                    {
+                        load()
+                        return
+                    }
+
+                    var id = autos[index][0]
 
                     Webapi.exec("AddAutoReserve", { id: id, folder: folder }, function (ret)
                     {
-                        if (ret.code != 0)
-                            Dialog.alert("移動に失敗しました。\n理由 : " + ret.message)
-
-                        counter.dec()
-                        setFolderMenu()
+                        index++
+                        if (ret.code == 0)
+                            setTimeout(exec, 0, index)
+                        else
+                            Dialog.alert("移動に失敗しました。\n理由 : " + ret.message, function ()
+                            {
+                                setTimeout(exec, 0, index)
+                            })
                     })
-                })
+                }
+
+                exec(0)
             })
         }
 
@@ -206,61 +209,67 @@ var AutoReservePage = {}
 
         function enableAutoReserve(enable)
         {
-            selectForEach(function (auto, counter)
+            var autos = self.autos.filter(function (auto) { return auto.checked })
+
+            var exec = function (index)
             {
-                var id = auto[0]
+                if (autos.length == index)
+                {
+                    load()
+                    updateReserve()
+                    return
+                }
+
+                var id = autos[index][0]
                 var status = enable ? 1 : 0
 
                 Webapi.exec("AddAutoReserve", { id: id, status: status }, function (ret)
                 {
-                    if (ret.code != 0)
-                        Dialog.alert("有効化に失敗しました。\n理由 : " + ret.message)
-
-                    counter.dec()
+                    index++
+                    if (ret.code == 0)
+                        setTimeout(exec, 0, index)
+                    else
+                        Dialog.alert("有効/無効化に失敗しました。\n理由 : " + ret.message, function ()
+                        {
+                            setTimeout(exec, 0, index)
+                        })
                 })
-            })
+            }
+
+            exec(0)
         }
 
         remove()
         {
             Dialog.confirm("選択された自動予約を削除してもいいですか？", function ()
             {
-                selectForEach(function (auto, counter)
+                var autos = self.autos.filter(function (auto) { return auto.checked })
+
+                var exec = function (index)
                 {
-                    var id = auto[0]
-
-                    Webapi.exec("RemoveAutoReserve", { id: id }, function (ret)
-                    {
-                        if (ret.code != 0)
-                            Dialog.alert("削除に失敗しました。\n理由 : " + ret.message)
-
-                        counter.dec()
-                    })
-                })
-            })
-        }
-
-        function selectForEach(callback)
-        {
-            var count = self.autos.length
-            var counter = {
-                dec: function ()
-                {
-                    count--
-                    if (count == 0)
+                    if (autos.length == index)
                     {
                         load()
                         updateReserve()
+                        return
                     }
-                }
-            }
 
-            self.autos.forEach(function (auto)
-            {
-                if (auto.checked)
-                    callback(auto, counter)
-                else
-                    counter.dec()
+                    var id = autos[index][0]
+
+                    Webapi.exec("RemoveAutoReserve", { id: id }, function (ret)
+                    {
+                        index++
+                        if (ret.code == 0)
+                            setTimeout(exec, 0, index)
+                        else
+                            Dialog.alert("削除に失敗しました。\n理由 : " + ret.message, function ()
+                            {
+                                setTimeout(exec, 0, index)
+                            })
+                    })
+                }
+
+                exec(0)
             })
         }
 

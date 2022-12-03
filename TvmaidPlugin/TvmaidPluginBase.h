@@ -14,7 +14,7 @@ typedef long long int64;
 
 const int null = 0;
 
-wchar* PluginVer = L"Tvmaid MAYA Plugin リリース 3";
+wchar* PluginVer = L"Tvmaid MAYA Plugin リリース 7";
 
 //例外
 class Exception
@@ -24,8 +24,8 @@ public:
 	{
 		NoError = 0,
 		CreateShared,
-		CreateWindow,
-		CreateMutex,
+		CreateWindowErr,
+		CreateMutexErr,
 		StartRec,
 		StopRec,
 		SetService,
@@ -151,7 +151,7 @@ public:
 	{
 		mutex = CreateMutex(null, FALSE, name);
 		if (mutex == null)
-			throw Exception(Exception::CreateMutex, L"Mutexの作成に失敗しました。");
+			throw Exception(Exception::CreateMutexErr, L"Mutexの作成に失敗しました。");
 	}
 
 	bool GetOwner(int timeout)
@@ -195,11 +195,11 @@ public:
 
 		if (GetClassInfo(g_hinstDLL, wndClass, &wc) == 0)	//クラスが登録済みか
 			if (RegisterClass(&wc) == 0)
-				throw Exception(Exception::CreateWindow, L"ウインドウの作成に失敗しました。");
+				throw Exception(Exception::CreateWindowErr, L"ウインドウの作成に失敗しました。");
 
 		window = CreateWindow(wndClass, id, 0, 0, 0, 0, 0, HWND_MESSAGE, null, g_hinstDLL, data);
 		if (window == null)
-			throw Exception(Exception::CreateWindow, L"ウインドウの作成に失敗しました。");
+			throw Exception(Exception::CreateWindowErr, L"ウインドウの作成に失敗しました。");
 	}
 
 	~Window()
@@ -257,6 +257,12 @@ private:
 		*/
 		Log(PluginVer);
 
+		if (m_pApp->QueryEvent(EVENT_STARTUPDONE) == false)
+		{
+			Log(L"TVTestのバージョンが古いため、プラグインを有効にできません。");
+			return false;
+		}
+
 		m_pApp->SetEventCallback(EventCallback, this);
 		m_pApp->SetStreamCallback(0, StreamCallback, this);
 
@@ -288,6 +294,8 @@ private:
 		{
 		case EVENT_DRIVERCHANGE:
 			//ユーザがドライバを変更した
+			if (self->window == null) break;	//TVTest0.9.0では、EVENT_STARTUPDONEより先にこのメッセージが来るため
+
 			try
 			{
 				self->userStart = true;	//ユーザが起動したことにする
@@ -487,7 +495,7 @@ private:
 		if (mutex->GetOwner(timeout))
 			wcscpy_s(driverId, id);
 		else
-			throw Exception(Exception::CreateMutex, L"ミューテックスの作成に失敗しました。");
+			throw Exception(Exception::CreateMutexErr, L"ミューテックスの作成に失敗しました。");
 	}
 
 	void InitMutex()

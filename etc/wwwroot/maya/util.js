@@ -78,38 +78,46 @@ SearchOpt.prototype = {
 
     keywordToSql: function (keyword)
     {
-        var sql = "";
-
-        if (keyword == null)
-            keyword = ""
+        keyword = keyword == null ? "" : keyword
 
         var words = keyword.split(/ |　/g);	//スペースで区切る(全角OK)
+        var sql = ""
+        var free = false
 
         words.forEach(function (word)
         {
             if (word == "" || word == "-" || word == "+")
                 return
+            
+            if (word == "@free")
+            {
+                free = true
+                return
+            }
 
             var sw = word.charAt(0);
 
             if (sw == "-")
             {
-                if (sql != "") sql += "and ";
+                if (sql != "") sql += " and ";
                 sql += "not ";
                 word = word.substr(1, word.length - 1);
             }
             else if (sw == "+")
             {
-                if (sql != "") sql += "or ";
+                if (sql != "") sql += " or ";
                 word = word.substr(1, word.length - 1);
             }
             else
-                if (sql != "") sql += "and ";
+                if (sql != "") sql += " and ";
 
             sql += "(title||desc||longdesc||genre_text) like '%{0}%' escape '^'".format(Webapi.sqlLikeEncode(word));
             sql = "(" + sql + ")";  //and、orの優先順位を無くす
         })
 
+        if (free)
+            sql = sql == "" ? "pay = 0" : "pay = 0 and " + sql
+        
         return sql == "" ? "1" : sql;
     }
 }
@@ -138,36 +146,12 @@ var Genre = {
             0x9: "performance",
             0xA: "education",
             0xB: "welfare",
-            0xC: "genre-etc",
-            0xD: "genre-etc",
+            0xC: "sports",
+            0xD: "movie",
             0xE: "genre-etc",
             0xF: "genre-etc",
         };
         return arr[id]
-    },
-
-    getText: function (id)
-    {
-        var arr =
-        {
-            0x0: "ニュース／報道",
-            0x1: "スポーツ",
-            0x2: "情報／ワイドショー",
-            0x3: "ドラマ",
-            0x4: "音楽",
-            0x5: "バラエティ",
-            0x6: "映画",
-            0x7: "アニメ／特撮",
-            0x8: "ドキュメンタリー／教養",
-            0x9: "劇場／公演",
-            0xA: "趣味／教育",
-            0xB: "福祉",
-            0xC: "予備",
-            0xD: "予備",
-            0xE: "拡張",
-            0xF: "その他"
-        }
-        return arr[id];
     }
 }
 

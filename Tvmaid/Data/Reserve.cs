@@ -326,13 +326,5 @@ namespace Tvmaid
 
             SetOverlay(tvdb);
         }
-
-        //予約のクリーンアップ
-        public static void Cleanup(Tvdb tvdb)
-        {
-            var time = DateTime.Now - new TimeSpan(1, 0, 0);    //現時刻 - 1時間(録画終了時より1時間以上経っている予約を削除)
-            tvdb.Sql = "delete from reserve where end < {0}".Formatex(time.Ticks);
-            tvdb.Execute();
-        }
     }
 }

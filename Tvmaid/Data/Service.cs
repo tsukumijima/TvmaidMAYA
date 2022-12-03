@@ -81,7 +81,7 @@ namespace Tvmaid
                             Id,
                             Tvdb.SqlEncode(Driver),
                             Fsid,
-                            Tvdb.SqlEncode(Name)
+                            Tvdb.SqlEncode(AppDefine.TextConverter.Convert(Name))
                             );
 
                 tvdb.Execute();

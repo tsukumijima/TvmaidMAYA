@@ -5,7 +5,7 @@
         <button onclick="history.back()" class="btn pull-left"><i class="material-icons">&#xE5C4;</i></button>
         <button class="btn pull-right" onclick="{ showRecordPanel }"><i class="material-icons">&#xE88F;</i></button>
         <button class="btn pull-right" onclick="{ changeChatMode }"><i class="material-icons">{ chatMode ? "&#xE0B7;" : "&#xE0CA;"  }</i></button>
-        <button class="btn pull-right" onclick="{ changePlayRate }">{ playRate }倍</button>
+        <button class="btn pull-right" onclick="{ changePlayRate }">x{ playRate }</button>
     </header>
 
     <content class="video-content">
@@ -138,14 +138,13 @@
             #seekbar > div
             {
                 position: relative;
-                margin: 0 12px;
                 height: 100%;
             }
 
             #seekbar #durationbar
             {
                 position: absolute;
-                top: 20px;
+                top: 15px;
                 left: 0;
                 width: 100%;
                 height: 4px;
@@ -156,7 +155,7 @@
             #seekbar #currentbar
             {
                 position: absolute;
-                top: 20px;
+                top: 15px;
                 left: 0;
                 width: 0;
                 height: 4px;
@@ -250,7 +249,7 @@
         function dragSeekbar(e)
         {
             var point = e.changedTouches ? e.changedTouches[0] : e;     //タッチかマウスかチェック
-            var x = point.clientX - e.currentTarget.getBoundingClientRect().left;   //seekbar内の座標取得
+            var x = point.clientX;
 
             var pos = x / seekbar.clientWidth * seekbar.duration
             if (pos < 0) pos = 0

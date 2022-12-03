@@ -71,8 +71,16 @@ namespace Tvmaid
                     var sw = new Stopwatch();
                     sw.Start();
 
+                    int counter = 0;
+
                     while (sw.ElapsedMilliseconds < epgWait * 1000)
                     {
+                        //3秒に1回番組情報がたまったかチェックする
+                        if (counter % 6 == 0)
+                            if (server.IsEpgComplete(service.Nid, service.EpgBasic ? 0 : service.Tsid))
+                                break;
+                        counter++;
+
                         var res = Reserve.GetActiveReserve(tuner, tvdb);
 
                         if (res != null)
@@ -109,8 +117,7 @@ namespace Tvmaid
                     {
                         Log.Info("予約を更新しています...");
 
-                        Reserve.Cleanup(tvdb);
-                        Event.Cleanup(tvdb);
+                        Cleanup();
                         Reserve.UpdateReserveTime(tvdb);
                         AutoReserve.AddReserveAll(tvdb);
                         tvdb.Dispose();
@@ -125,7 +132,41 @@ namespace Tvmaid
                 }
             }
         }
-                
+
+        void Cleanup()
+        {
+            //現時刻 - 1時間(録画終了時より1時間以上経っている予約を削除)
+            var time = DateTime.Now - new TimeSpan(1, 0, 0);
+            tvdb.Sql = "delete from reserve where end < {0}".Formatex(time.Ticks);
+            tvdb.Execute();
+
+            //なくなった番組の予約を削除
+            tvdb.Sql = @"delete from reserve where id in
+                        (
+                        select reserve.id from 
+                        (event left join reserve on event.eid = reserve.eid and event.fsid = reserve.fsid) as e1
+                        left join event as e2 on e1.fsid = e2.fsid and e1.id < e2.id
+                        where e1.start < e2.end and e1.end > e2.start and reserve.id is not null 
+                        )";
+
+            tvdb.Execute();
+
+            //現時刻 - 24時間(終了時より24時間以上経っている番組情報を削除)
+            time = DateTime.Now - new TimeSpan(24, 0, 0);
+            tvdb.Sql = "delete from event where end < {0}".Formatex(time.Ticks);
+            tvdb.Execute();
+
+            //なくなった番組を削除
+            tvdb.Sql = @"delete from event where id in
+                        (
+                        select e1.id from event as e1
+                        left join event as e2 on e1.fsid = e2.fsid and e1.id < e2.id
+                        where e1.start < e2.end and e1.end > e2.start
+                        )";
+
+            tvdb.Execute();
+        }
+
         //番組表更新
         //取得したサービスだけでなく、同じnid, tsidのサービスも更新する
         void UpdateEvent(Service service)

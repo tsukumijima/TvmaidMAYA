@@ -316,7 +316,7 @@
             self.enable = !self.enable
         }
 
-        function listToText(list, convert)
+        function listToText(list)
         {
             if (list == null)
                 return "指定なし"
@@ -359,7 +359,23 @@
                 self.hour = listToText(hours)
                 
                 self.update()
+
+                checkService(opt)
             })
+        }
+
+        function checkService(opt)
+        {
+            var check = opt.fsid.every(function (fsid)
+            {
+                return services.some(function (s) { return s.fsid == fsid })
+            })
+
+            if (check == false)
+            {
+                modify = true
+                Dialog.alert("削除されたサービスが指定されています。この自動予約を保存しなおしてください。")
+            }
         }
 
         function loadSearchData(opt)

@@ -62,6 +62,9 @@
                     </div>
                     <div>メンテナンス</div>
                     <div>
+                        <button class="btn" onclick="{ checkAutoReserve }">自動予約のチェック</button>
+                    </div>
+                    <div>
                         <button class="btn" onclick="{ clearLog }">ログをクリア</button>
                     </div>
                     <div>
@@ -117,6 +120,59 @@
                     callback = null
                 }
             }
+        }
+
+        checkAutoReserve()
+        {
+            var exec = function (autos, index, errors)
+            {
+                if (autos.length == index)
+                {
+                    Dialog.editor("修正の必要がある自動予約 {0}件".format(errors.length), function () { }, errors.join("\n"))
+                    return
+                }
+                var opt = SearchOpt.fromJson(autos[index][1])
+
+                if (opt.fsid == null || opt.fsid.length == 0)
+                {
+                    index++
+                    setTimeout(exec, 0, autos, index, errors)
+                }
+                else
+                {
+                    var sql = "select count(*) from (select id from service where fsid in ({0}) group by fsid)".format(opt.fsid.join(","))
+
+                    Webapi.getTable(sql, function (ret)
+                    {
+                        if (ret.code != 0)
+                        {
+                            Dialog.alert("サービスの取得に失敗しました。理由 : " + ret.message)
+                            return
+                        }
+                        if (ret.data1[0][0] != opt.fsid.length)
+                            errors.push(autos[index][0])
+
+                        index++
+                        setTimeout(exec, 0, autos, index, errors)
+                    })
+                }
+            }
+
+            Dialog.confirm('自動予約のサービス指定に、削除されたサービスが含まれていないかチェックします。実行しますか？(有効な自動予約のみチェックします)', function ()
+            {
+                var sql = "select folder || '/' || name, option from auto_reserve where status & 1"
+
+                Webapi.getTable(sql, function (ret)
+                {
+                    if (ret.code != 0)
+                    {
+                        Dialog.alert("自動予約の取得に失敗しました。理由 : " + ret.message)
+                        return
+                    }
+
+                    exec(ret.data1, 0, [])
+                })
+            })
         }
 
         changeRecordView()

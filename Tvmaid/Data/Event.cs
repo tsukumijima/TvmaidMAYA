@@ -100,7 +100,7 @@ namespace Tvmaid
                 tvdb.BeginTrans();
 
                 if (Id == -1)
-                    Id = tvdb.GetNextId("event");
+                    Id = tvdb.GetNextId("event");   //IDは常に増加させること
                 else
                     Remove(tvdb);
                 
@@ -134,14 +134,6 @@ namespace Tvmaid
             {
                 tvdb.Commit();
             }
-        }
-
-        //番組情報のクリーンアップ
-        public static void Cleanup(Tvdb tvdb)
-        {
-            var time = DateTime.Now - new TimeSpan(24, 0, 0);    //現時刻 - 24時間(終了時より24時間以上経っている番組情報を削除)
-            tvdb.Sql = "delete from event where end < {0}".Formatex(time.Ticks);
-            tvdb.Execute();
         }
     }
 }

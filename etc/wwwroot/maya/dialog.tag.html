@@ -24,9 +24,11 @@
 
     <script>
         var self = this
+        var callback
 
-        Dialog.alert = function (message)
+        Dialog.alert = function (message, _callback)
         {
+            callback = _callback
             self.message = message
             self.visible = "display: block;"
             self.update()
@@ -35,6 +37,7 @@
         confirm()
         {
             self.visible = ""
+            if (callback != null) callback()
         }
     </script>
 </alert>
@@ -180,9 +183,9 @@
         var self = this
         var callback
 
-        Dialog.editor = function (message, _callback)
+        Dialog.editor = function (message, _callback, value)
         {
-            self.refs["text"].value = ""
+            self.refs["text"].value = value == null ? "" : value
             callback = _callback
             self.message = message
             self.visible = "display: block;"

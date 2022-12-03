@@ -18,11 +18,67 @@ class TvmaidPlugin : public TvmaidPluginBase
 			&TvmaidPlugin::StopRec,
 			&TvmaidPlugin::GetEventTime,
 			&TvmaidPlugin::GetTsStatus,
-			&TvmaidPlugin::GetLogo
+			&TvmaidPlugin::GetLogo,
+			&TvmaidPlugin::IsEpgComplete
 		};
 
 		sharedOut->Init();
 		(this->*call[api - 0xb000])();
+	}
+
+	//戻り値: 0:未完,1=完了,-1:エラー
+	int GetEpgStatus(int nid, int tsid)
+	{
+		if (m_pApp->QueryMessage(MESSAGE_GETEPGCAPTURESTATUS) == false)
+			return -1;
+
+		auto status = tsid == 0 ? EPG_CAPTURE_STATUS_SCHEDULEBASICCOMPLETED : EPG_CAPTURE_STATUS_SCHEDULEBASICCOMPLETED | EPG_CAPTURE_STATUS_SCHEDULEEXTENDEDCOMPLETED;
+
+		int count = 0;
+		m_pApp->GetTuningSpace(&count);
+
+		for (int space = 0; space < count; space++)
+		{
+			ChannelInfo chInfo;
+			chInfo.Size = sizeof(chInfo);
+
+			for (int ch = 0; m_pApp->GetChannelInfo(space, ch, &chInfo); ch++)
+			{
+				if (chInfo.Flags & CHANNEL_FLAG_DISABLED)
+					continue;
+
+				if (nid == chInfo.NetworkID && (tsid == 0 || tsid == chInfo.TransportStreamID))
+				{
+					EpgCaptureStatusInfo epgInfo;
+					epgInfo.Size = sizeof(epgInfo);
+					epgInfo.Flags = 0;
+					epgInfo.NetworkID = chInfo.NetworkID;
+					epgInfo.TransportStreamID = chInfo.TransportStreamID;
+					epgInfo.ServiceID = chInfo.ServiceID;
+					epgInfo.Status = status;
+
+					if (m_pApp->GetEpgCaptureStatus(&epgInfo) == false)
+						return -1;
+
+					if ((epgInfo.Status & status) != status)
+						return 0;
+				}
+			}
+		}
+		return 1;
+	}
+
+	//番組表取得が完了したかどうか
+	//戻り値:完了=1, 未完またはエラー=0
+	//引数:tsid=0     指定NIDのサービスで基本情報を取得完了したか
+	//     tsid=0以外 指定NID,TSIDのサービスで拡張情報を取得完了したか
+	void IsEpgComplete()
+	{
+		int nid, tsid;
+		swscanf_s(sharedIn->Read(), L"%d\x1" L"%d", &nid, &tsid);
+
+		auto ret = GetEpgStatus(nid, tsid);
+		sharedOut->Write(L"%d", ret == 1 ? 1 : 0);
 	}
 
 	//ロゴ取得
@@ -110,7 +166,7 @@ class TvmaidPlugin : public TvmaidPluginBase
 			for (int ch = 0; m_pApp->GetChannelInfo(space, ch, &info); ch++)
 			{
 				//有効なサービスだけ取得
-				if (info.Flags != CHANNEL_FLAG_DISABLED)
+				if ((info.Flags & CHANNEL_FLAG_DISABLED) == 0)
 				{
 					sharedOut->Write(L"%d\x2" L"%d\x2" L"%d\x2" L"%s\x1",
 						info.NetworkID,
@@ -138,7 +194,7 @@ class TvmaidPlugin : public TvmaidPluginBase
 
 			for (int ch = 0; m_pApp->GetChannelInfo(space, ch, &ci); ch++)
 			{
-				if (ci.Flags != CHANNEL_FLAG_DISABLED && ci.NetworkID == nid && ci.TransportStreamID == tsid && ci.ServiceID == sid)
+				if ((ci.Flags & CHANNEL_FLAG_DISABLED) == 0 && ci.NetworkID == nid && ci.TransportStreamID == tsid && ci.ServiceID == sid)
 				{
 					if (m_pApp->SetChannel(space, ch, sid) == false)
 						throw Exception(Exception::SetService, L"サービスの変更に失敗しました。");
@@ -223,7 +279,7 @@ class TvmaidPlugin : public TvmaidPluginBase
 				GetTimeStr(&event->StartTime, time, sizeof(time) / sizeof(wchar_t));
 				
 				wchar* nullStr = L"";
-				sharedOut->Write(L"%d\x2" L"%s\x2" L"%d\x2" L"%s\x2" L"%s\x2" L"%s\x2" L"%u\x2" L"%d\x1",
+				sharedOut->Write(L"%d\x2" L"%s\x2" L"%d\x2" L"%s\x2" L"%s\x2" L"%s\x2" L"%lld\x2" L"%d\x1",
 					event->EventID,
 					time,
 					event->Duration,
@@ -239,28 +295,44 @@ class TvmaidPlugin : public TvmaidPluginBase
 			throw Exception(Exception::GetEvents, L"番組表の取得に失敗しました。");
 	}
 
-	//ジャンルを取得。最大4つまで取得する
-	//ジャンルの数を増やす場合は、int64に変更すること
-	//sharedOut.Writeの書式も変更すること
-	uint GetGenre(EpgEventInfo* event)
+	//ジャンルを取得。最大6まで取得する
+	int64 GetGenre(EpgEventInfo* event)
 	{
-		uint data = 0;
+		int64 ret = 0;
 
-		for (int i = 0; i < 4; i++)
+		for (int i = 0; i < 6; i++)
 		{
 			if (i < event->ContentListLength)
 			{
-				EpgEventContentInfo* info = event->ContentList + i;
-				uint level1 = info->ContentNibbleLevel1;
-				uint level2 = info->ContentNibbleLevel2;
-				uint genre = (level1 << 4) + level2;
-				data += genre << (i * 8);
+				auto info = event->ContentList + i;
+				int64 genre = ((int)info->ContentNibbleLevel1 << 4) + info->ContentNibbleLevel2;
+
+				//拡張ジャンルをジャンルへマッピング
+				if (genre == 0xe0 && info->UserNibble1 == 0 && info->UserNibble2 <= 0x5)
+					genre = 0xf0 + info->UserNibble2;	//番組付属情報->0xf0～0xf5
+				else if (genre == 0xe0 && info->UserNibble1 == 1 && info->UserNibble2 <= 0x1)
+					genre = 0xfa + info->UserNibble2;	//番組付属情報->0xfa～0xfb
+				else if (genre == 0xe1 && info->UserNibble1 == 0)
+					genre = 0xc0 + info->UserNibble2;	//CSスポーツ->0xc0～0xcf
+				else if (genre == 0xe1 && info->UserNibble1 == 1)
+					genre = 0xd0 + info->UserNibble2;	//CS洋画->0xd0～0xdf
+				else if (genre == 0xe1 && info->UserNibble1 == 2 && info->UserNibble2 == 0x6)
+					genre = 0xdd;						//CS邦画0x6->0xdd
+				else if (genre == 0xe1 && info->UserNibble1 == 2 && info->UserNibble2 == 0x7)
+					genre = 0xde;						//CS邦画0x7->0xde
+				else if (genre == 0xe1 && info->UserNibble1 == 2)
+					genre = 0xd0 + info->UserNibble2;	//CS邦画0x6,0x7以外->0xd0～0xdf
+			
+				ret += genre << (i * 8);
 			}
 			else
-				data += 0xff << (i * 8);
+			{
+				int64 genre = 0xff;
+				ret += genre << (i * 8);
+			}
 		}
 
-		return data;
+		return ret;
 	}
 
 	void GetState()

@@ -6,7 +6,7 @@ namespace Tvmaid
     static class Program
     {
         public static string Name = "Tvmaid";
-        public static string Version = "MAYA リリース 27";
+        public static string Version = "MAYA リリース 30";
 
         public static bool IsTunerUpdate = false;
         public static bool IsReboot = false;

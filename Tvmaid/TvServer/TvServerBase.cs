@@ -32,7 +32,8 @@ namespace Tvmaid
             StopRec,
             GetEventTime,
             GetTsStatus,
-            GetLogo
+            GetLogo,
+            IsEpgComplete
         }
 
         //TVTestプラグインエラーコード
